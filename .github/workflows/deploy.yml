@@ -197,6 +197,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-node0, build-node1, build-node2]
     steps:
+      - name: Sync admin credentials to NODE0 .env
+        uses: appleboy/ssh-action@v1
+        env:
+          ADMIN_PASS: ${{ secrets.ADMIN_PASSWORD }}
+        with:
+          host: ${{ vars.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          envs: ADMIN_PASS
+          script: |
+            f=/opt/brickprofit/.env
+            grep -q '^ADMIN_USERNAME=' "$f" \
+              && sed -i 's|^ADMIN_USERNAME=.*|ADMIN_USERNAME=admin|' "$f" \
+              || echo 'ADMIN_USERNAME=admin' >> "$f"
+            grep -q '^ADMIN_PASSWORD=' "$f" \
+              && sed -i "s|^ADMIN_PASSWORD=.*|ADMIN_PASSWORD=${ADMIN_PASS}|" "$f" \
+              || echo "ADMIN_PASSWORD=${ADMIN_PASS}" >> "$f"
+
       - name: Deploy stack from NODE0
         uses: appleboy/ssh-action@v1
         with:
