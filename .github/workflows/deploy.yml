@@ -145,6 +145,7 @@ jobs:
           host: ${{ vars.NODE0_HOST }}
           username: root
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd /opt/brickprofit && git pull origin main
@@ -163,6 +164,7 @@ jobs:
           host: ${{ vars.NODE1_HOST }}
           username: root
           password: ${{ secrets.NODE1_SSH_PASSWORD }}
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd /opt/brickprofit && git pull origin main
@@ -181,6 +183,7 @@ jobs:
           host: ${{ vars.NODE2_HOST }}
           username: root
           password: ${{ secrets.NODE2_SSH_PASSWORD }}
+          command_timeout: 30m
           script: |
             set -euo pipefail
             cd /opt/brickprofit && git pull origin main
