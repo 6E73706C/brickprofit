@@ -108,6 +108,11 @@ def containers():
                 desc = n.attrs.get("Description", {})
                 hostname = desc.get("Hostname", n.short_id)
                 addr = n.attrs.get("Status", {}).get("Addr", "")
+                # Status.Addr is 0.0.0.0 for the local manager node;
+                # fall back to ManagerStatus.Addr which carries the real IP.
+                if not addr or addr == "0.0.0.0":
+                    mgr_addr = n.attrs.get("ManagerStatus", {}).get("Addr", "")
+                    addr = mgr_addr.split(":")[0] if mgr_addr else ""
                 node_map[n.id] = f"{hostname} ({addr})" if addr else hostname
         except Exception:
             pass  # not a swarm manager – fall through to local-only

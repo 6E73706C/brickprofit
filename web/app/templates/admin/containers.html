@@ -34,16 +34,7 @@
         </tr>
       </thead>
       <tbody>
-        {% set ns = namespace(prev_node="") %}
         {% for c in rows %}
-        {% if swarm_mode and c.node != ns.prev_node %}
-          {% set ns.prev_node = c.node %}
-          <tr style="background:rgba(255,255,255,.04);">
-            <td colspan="6" style="padding:.45rem .75rem;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--border);">
-              <i class="bi bi-hdd-network-fill" style="margin-right:.35rem;"></i>{{ c.node }}
-            </td>
-          </tr>
-        {% endif %}
         <tr>
           <td><span class="mono">{{ c.id }}</span></td>
           <td>{{ c.name }}</td>
