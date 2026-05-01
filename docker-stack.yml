@@ -1,0 +1,329 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BrickProfit – Docker Swarm Stack
+# Rolling updates: each service uses update_config so containers are replaced
+# one-by-one with zero downtime.  Scale workers/api by increasing replicas or
+# running:  docker service scale brickprofit_api=6
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  frontend_net:
+    driver: overlay
+    attachable: true
+  backend_net:
+    driver: overlay
+    attachable: true
+  monitoring_net:
+    driver: overlay
+    attachable: true
+
+volumes:
+  cassandra_data_1:
+  cassandra_data_2:
+  cassandra_data_3:
+  redis_data:
+  grafana_data:
+  prometheus_data:
+
+services:
+
+  # ── Reverse Proxy / SSL Termination ───────────────────────────────────────
+  nginx:
+    image: ${REGISTRY}/brickprofit-nginx:${TAG:-latest}
+    build:
+      context: ./nginx
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    networks:
+      - frontend_net
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first          # bring new container up BEFORE killing old
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - api
+      - web
+
+  # ── FastAPI  (REST API / public endpoints) ────────────────────────────────
+  api:
+    image: ${REGISTRY}/brickprofit-api:${TAG:-latest}
+    build:
+      context: ./api
+    environment:
+      - CASSANDRA_HOSTS=cassandra1,cassandra2,cassandra3
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=production
+    networks:
+      - frontend_net
+      - backend_net
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 15s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── Flask  (admin dashboard / SSR pages) ─────────────────────────────────
+  web:
+    image: ${REGISTRY}/brickprofit-web:${TAG:-latest}
+    build:
+      context: ./web
+    environment:
+      - CASSANDRA_HOSTS=cassandra1,cassandra2,cassandra3
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
+      - SECRET_KEY=${SECRET_KEY}
+      - FLASK_ENV=production
+    networks:
+      - frontend_net
+      - backend_net
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 15s
+        order: start-first
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "1"
+          memory: 384M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── Celery Worker  (async / background tasks) ─────────────────────────────
+  worker:
+    image: ${REGISTRY}/brickprofit-worker:${TAG:-latest}
+    build:
+      context: ./worker
+    environment:
+      - CASSANDRA_HOSTS=cassandra1,cassandra2,cassandra3
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+    networks:
+      - backend_net
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 20s
+        order: stop-first           # workers: drain tasks before updating
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+
+  # ── Celery Beat  (scheduler – single replica only!) ───────────────────────
+  beat:
+    image: ${REGISTRY}/brickprofit-worker:${TAG:-latest}
+    command: ["celery", "-A", "tasks", "beat", "--loglevel=info"]
+    environment:
+      - CASSANDRA_HOSTS=cassandra1,cassandra2,cassandra3
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1          # NEVER scale beat above 1
+      restart_policy:
+        condition: on-failure
+
+  # ── Redis  (cache + Celery broker) ────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: 256M
+
+  # ── Cassandra Node 1 (seed) ───────────────────────────────────────────────
+  cassandra1:
+    image: cassandra:4.1
+    hostname: cassandra1
+    environment:
+      - CASSANDRA_CLUSTER_NAME=${CASSANDRA_CLUSTER_NAME:-BrickProfitCluster}
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_SEEDS=cassandra1
+      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
+      - CASSANDRA_AUTHORIZER=CassandraAuthorizer
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - cassandra_data_1:/var/lib/cassandra
+      - ./cassandra/init.cql:/docker-entrypoint-initdb.d/init.cql:ro
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.cassandra == node1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+    healthcheck:
+      test: ["CMD", "cqlsh", "-u", "${CASSANDRA_USER}", "-p", "${CASSANDRA_PASSWORD}", "-e", "describe keyspaces"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Cassandra Node 2 ──────────────────────────────────────────────────────
+  cassandra2:
+    image: cassandra:4.1
+    hostname: cassandra2
+    environment:
+      - CASSANDRA_CLUSTER_NAME=${CASSANDRA_CLUSTER_NAME:-BrickProfitCluster}
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_RACK=rack2
+      - CASSANDRA_SEEDS=cassandra1
+      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
+      - CASSANDRA_AUTHORIZER=CassandraAuthorizer
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - cassandra_data_2:/var/lib/cassandra
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.cassandra == node2
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+
+  # ── Cassandra Node 3 ──────────────────────────────────────────────────────
+  cassandra3:
+    image: cassandra:4.1
+    hostname: cassandra3
+    environment:
+      - CASSANDRA_CLUSTER_NAME=${CASSANDRA_CLUSTER_NAME:-BrickProfitCluster}
+      - CASSANDRA_DC=dc1
+      - CASSANDRA_RACK=rack3
+      - CASSANDRA_SEEDS=cassandra1
+      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
+      - CASSANDRA_AUTHORIZER=CassandraAuthorizer
+      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=512M
+    volumes:
+      - cassandra_data_3:/var/lib/cassandra
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.cassandra == node3
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    networks:
+      - monitoring_net
+      - backend_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://brickprofit.net/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - monitoring_net
+      - frontend_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
