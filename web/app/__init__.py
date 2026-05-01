@@ -24,6 +24,10 @@ def create_app():
     # Prometheus metrics at /metrics
     PrometheusMetrics(app)
 
+    # Background Cassandra → Prometheus proxy-count collector
+    from app.proxy_metrics import start_collector
+    start_collector()
+
     from app.views.auth import bp as auth_bp
     from app.views.dashboard import bp as dashboard_bp
     from app.views.admin import bp as admin_bp
