@@ -160,8 +160,8 @@ jobs:
             set -a; source /opt/brickprofit/.env; set +a
             # If nginx is still in replicated mode, remove it first — Swarm can't
             # change replicated→global in-place; stack deploy silently ignores it
-            NGINX_MODE=$(docker service inspect brickprofit_nginx --format '{{.Spec.Mode}}' 2>/dev/null || echo "")
-            if echo "$NGINX_MODE" | grep -q "Replicated"; then
+            NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
+            if [ "$NGINX_MODE" = "replicated" ]; then
               echo "Removing replicated nginx service to allow recreation as global..."
               docker service rm brickprofit_nginx || true
               sleep 5
