@@ -325,5 +325,7 @@ services:
       - frontend_net
     deploy:
       replicas: 1
+      placement:
+        constraints: [node.hostname == node0]
       restart_policy:
         condition: on-failure
