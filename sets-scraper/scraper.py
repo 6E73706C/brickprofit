@@ -210,7 +210,7 @@ def has_next_page(html: str, current_pg: int) -> bool:
 
 
 # ── Image download ───────────────────────────────────────────────────────────
-def download_image(item: dict) -> None:
+def download_image(item: dict, proxies: dict | None = None) -> None:
     """Download the large image for a set to IMAGE_DIR if not already cached."""
     large_url = item.get("large_image_url", "")
     item_no   = item.get("item_no", "")
@@ -223,7 +223,7 @@ def download_image(item: dict) -> None:
     os.makedirs(IMAGE_DIR, exist_ok=True)
     tmp = dest + ".tmp"
     try:
-        resp = requests.get(large_url, headers=HEADERS, timeout=15, stream=True)
+        resp = requests.get(large_url, headers=HEADERS, proxies=proxies, timeout=15, stream=True)
         resp.raise_for_status()
         with open(tmp, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
@@ -295,7 +295,7 @@ def scrape_year(session, update_stmt, year: int) -> int:
         now = datetime.now(timezone.utc)
         for item in sets:
             upsert_set(session, None, update_stmt, year, item, now)
-            download_image(item)
+            download_image(item, proxy)
             total += 1
 
         if not has_next_page(html, pg):

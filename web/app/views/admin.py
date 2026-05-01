@@ -25,12 +25,35 @@ def _safe_filename(item_no: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
 
 
+def _get_golden_proxy_url() -> dict | None:
+    """Fetch a random golden proxy from Cassandra and return a requests proxies dict."""
+    try:
+        import random
+        session = get_session()
+        rows = list(session.execute("SELECT protocol, ip, port FROM golden_proxies"))
+        if not rows:
+            return None
+        row = random.choice(rows)
+        if row.protocol == "http":
+            url = f"http://{row.ip}:{row.port}"
+        elif row.protocol == "socks4":
+            url = f"socks4://{row.ip}:{row.port}"
+        elif row.protocol == "socks5":
+            url = f"socks5://{row.ip}:{row.port}"
+        else:
+            return None
+        return {"http": url, "https": url}
+    except Exception:
+        return None
+
+
 def _backfill_worker(rows: list) -> None:
     global _backfill_state
     images_dir = Path(LEGO_IMAGES_DIR)
     images_dir.mkdir(parents=True, exist_ok=True)
     done = 0
     errors = 0
+    proxy = _get_golden_proxy_url()  # one proxy to start; rotated on error
     for row in rows:
         try:
             item_no = row.item_no
@@ -49,7 +72,7 @@ def _backfill_worker(rows: list) -> None:
                 continue
             tmp = dest.with_suffix(".tmp")
             try:
-                resp = _requests.get(large_url, timeout=15, stream=True)
+                resp = _requests.get(large_url, timeout=15, stream=True, proxies=proxy)
                 resp.raise_for_status()
                 with open(tmp, "wb") as fh:
                     for chunk in resp.iter_content(65536):
@@ -57,6 +80,7 @@ def _backfill_worker(rows: list) -> None:
                 tmp.rename(dest)
             except Exception:
                 errors += 1
+                proxy = _get_golden_proxy_url()  # rotate proxy on failure
                 if tmp.exists():
                     tmp.unlink(missing_ok=True)
             done += 1
