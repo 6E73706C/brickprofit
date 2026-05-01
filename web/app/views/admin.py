@@ -93,6 +93,40 @@ def proxies():
     )
 
 
+# ── Containers ───────────────────────────────────────────────────────────────
+@bp.get("/containers")
+@login_required
+def containers():
+    import socket as _socket
+    try:
+        import docker as docker_sdk
+        client = docker_sdk.from_env()
+        raw = client.containers.list(all=False)  # running only
+        rows = []
+        for c in raw:
+            ports = []
+            for container_port, bindings in (c.ports or {}).items():
+                if bindings:
+                    for b in bindings:
+                        ports.append(f"{b['HostPort']}→{container_port}")
+                else:
+                    ports.append(container_port)
+            rows.append({
+                "id": c.short_id,
+                "name": c.name,
+                "image": c.image.tags[0] if c.image.tags else c.image.short_id,
+                "status": c.status,
+                "created": c.attrs.get("Created", "")[:19].replace("T", " "),
+                "ports": ", ".join(ports) or "—",
+            })
+        error = None
+    except Exception as exc:
+        rows = []
+        error = str(exc)
+    hostname = _socket.gethostname()
+    return render_template("admin/containers.html", rows=rows, error=error, hostname=hostname)
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 @bp.get("/sessions")
 @login_required

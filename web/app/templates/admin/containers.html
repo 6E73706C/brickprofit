@@ -1,0 +1,55 @@
+{% extends "admin/layout.html" %}
+{% block title %}Containers – BrickProfit Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0">Running Containers</h4>
+    <small class="text-muted">Node: <code>{{ hostname }}</code> &mdash; {{ rows|length }} container(s) running</small>
+  </div>
+  <a href="{{ url_for('admin.containers') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+  </a>
+</div>
+
+{% if error %}
+  <div class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    Could not connect to Docker socket: <code>{{ error }}</code>
+  </div>
+{% elif not rows %}
+  <div class="alert alert-secondary">No running containers found on this node.</div>
+{% else %}
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-striped table-hover mb-0 align-middle">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Image</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Ports</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in rows %}
+        <tr>
+          <td><code class="text-muted" style="font-size:.8rem">{{ c.id }}</code></td>
+          <td>{{ c.name }}</td>
+          <td><span class="text-info" style="font-size:.85rem">{{ c.image }}</span></td>
+          <td>
+            <span class="badge rounded-pill {% if c.status == 'running' %}badge-active{% else %}badge-inactive{% endif %}">
+              {{ c.status }}
+            </span>
+          </td>
+          <td><small class="text-muted">{{ c.created }}</small></td>
+          <td><small>{{ c.ports }}</small></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

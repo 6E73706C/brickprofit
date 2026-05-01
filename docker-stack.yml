@@ -124,6 +124,8 @@ services:
       - FLASK_ENV=production
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - frontend_net
       - backend_net
