@@ -3,29 +3,59 @@
 {% block content %}
 <div class="ph">
   <div>
-    <p class="ph-title">Containers</p>
-    <p class="ph-sub">Node: <code>{{ hostname }}</code> &mdash; {{ rows|length }} running</p>
+    <p class="ph-title"><i class="bi bi-boxes" style="margin-right:.4rem;"></i>Containers</p>
+    <p class="ph-sub">
+      {% if swarm_mode %}
+        Swarm cluster &mdash; {{ node_count }} node{{ 's' if node_count != 1 }} &mdash; {{ rows|length }} running task{{ 's' if rows|length != 1 }}
+      {% else %}
+        Local node &mdash; {{ rows|length }} running
+      {% endif %}
+    </p>
   </div>
   <a class="bp-btn" href="{{ url_for('admin.containers') }}"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
 </div>
 {% if error %}
-  <div class="bp-alert bp-alert-danger"><i class="bi bi-exclamation-circle-fill"></i> Docker socket error: <code>{{ error }}</code></div>
+  <div class="bp-alert bp-alert-danger"><i class="bi bi-exclamation-circle-fill"></i> Docker error: <code>{{ error }}</code></div>
 {% elif not rows %}
-  <div class="bp-alert bp-alert-info"><i class="bi bi-info-circle-fill"></i> No running containers found on this node.</div>
+  <div class="bp-alert bp-alert-info"><i class="bi bi-info-circle-fill"></i> No running containers found.</div>
 {% else %}
 <div class="bp-card">
   <div style="overflow-x:auto;">
     <table class="bp-tbl">
-      <thead><tr><th>ID</th><th>Name</th><th>Image</th><th>Status</th><th>Created</th><th>Ports</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Image</th>
+          <th>Status</th>
+          <th>Node</th>
+          <th>Created</th>
+          {% if not swarm_mode %}<th>Ports</th>{% endif %}
+        </tr>
+      </thead>
       <tbody>
+        {% set ns = namespace(prev_node="") %}
         {% for c in rows %}
+        {% if swarm_mode and c.node != ns.prev_node %}
+          {% set ns.prev_node = c.node %}
+          <tr style="background:rgba(255,255,255,.04);">
+            <td colspan="6" style="padding:.45rem .75rem;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--border);">
+              <i class="bi bi-hdd-network-fill" style="margin-right:.35rem;"></i>{{ c.node }}
+            </td>
+          </tr>
+        {% endif %}
         <tr>
           <td><span class="mono">{{ c.id }}</span></td>
           <td>{{ c.name }}</td>
           <td class="dim">{{ c.image }}</td>
-          <td><span class="badge {% if c.status == 'running' %}b-green{% else %}b-gray{% endif %}">{{ c.status }}</span></td>
+          <td>
+            <span class="badge {% if c.status == 'running' %}b-green{% elif c.status in ('starting', 'preparing') %}b-yellow{% else %}b-gray{% endif %}">
+              {{ c.status }}
+            </span>
+          </td>
+          <td class="dim" style="font-size:.78rem;">{{ c.node }}</td>
           <td class="dim">{{ c.created }}</td>
-          <td><span class="mono" style="font-size:.75rem;">{{ c.ports }}</span></td>
+          {% if not swarm_mode %}<td><span class="mono" style="font-size:.75rem;">{{ c.ports }}</span></td>{% endif %}
         </tr>
         {% endfor %}
       </tbody>

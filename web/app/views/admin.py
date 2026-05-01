@@ -97,38 +97,109 @@ def proxies():
 @bp.get("/containers")
 @login_required
 def containers():
-    import socket as _socket
     try:
         import docker as docker_sdk
         client = docker_sdk.from_env()
-        raw = client.containers.list(all=False)  # running only
+
+        # Build node_id → display label map
+        node_map = {}
+        try:
+            for n in client.nodes.list():
+                desc = n.attrs.get("Description", {})
+                hostname = desc.get("Hostname", n.short_id)
+                addr = n.attrs.get("Status", {}).get("Addr", "")
+                node_map[n.id] = f"{hostname} ({addr})" if addr else hostname
+        except Exception:
+            pass  # not a swarm manager – fall through to local-only
+
+        # Build service_id → service_name map
+        svc_map = {}
+        try:
+            for s in client.services.list():
+                svc_map[s.id] = s.name
+        except Exception:
+            pass
+
         rows = []
-        for c in raw:
+
+        if node_map:
+            # Swarm mode: query all tasks across all nodes
             try:
-                ports = []
-                for container_port, bindings in (c.ports or {}).items():
-                    if bindings:
-                        for b in bindings:
-                            ports.append(f"{b['HostPort']}→{container_port}")
-                    else:
-                        ports.append(container_port)
-                image_name = (c.attrs.get("Config") or {}).get("Image") or c.short_id
-                rows.append({
-                    "id": c.short_id,
-                    "name": c.name,
-                    "image": image_name,
-                    "status": c.status,
-                    "created": c.attrs.get("Created", "")[:19].replace("T", " "),
-                    "ports": ", ".join(ports) or "—",
-                })
+                tasks = client.api.tasks()
             except Exception:
-                pass
+                tasks = []
+            for t in tasks:
+                state = (t.get("Status") or {}).get("State", "")
+                if state not in ("running", "starting", "preparing"):
+                    continue
+                try:
+                    spec = t.get("Spec", {})
+                    container_spec = spec.get("ContainerSpec", {})
+                    image = container_spec.get("Image", "")
+                    # strip digest suffix  (image@sha256:...)
+                    if "@" in image:
+                        image = image.split("@")[0]
+                    svc_id = t.get("ServiceID", "")
+                    svc_name = svc_map.get(svc_id, svc_id[:12] if svc_id else "—")
+                    slot = t.get("Slot")
+                    name = f"{svc_name}.{slot}" if slot else svc_name
+                    node_id = t.get("NodeID", "")
+                    node_label = node_map.get(node_id, node_id[:12] if node_id else "—")
+                    container_status = (t.get("Status") or {}).get("ContainerStatus") or {}
+                    cid = container_status.get("ContainerID", "")
+                    created = t.get("CreatedAt", "")[:19].replace("T", " ")
+                    rows.append({
+                        "id": cid[:12] if cid else "—",
+                        "name": name,
+                        "image": image,
+                        "status": state,
+                        "node": node_label,
+                        "created": created,
+                        "ports": "—",
+                    })
+                except Exception:
+                    pass
+            # Sort by node label then container name
+            rows.sort(key=lambda r: (r["node"], r["name"]))
+        else:
+            # Fallback: local containers only (non-swarm or no manager access)
+            raw = client.containers.list(all=False)
+            for c in raw:
+                try:
+                    ports = []
+                    for container_port, bindings in (c.ports or {}).items():
+                        if bindings:
+                            for b in bindings:
+                                ports.append(f"{b['HostPort']}→{container_port}")
+                        else:
+                            ports.append(container_port)
+                    image_name = (c.attrs.get("Config") or {}).get("Image") or c.short_id
+                    rows.append({
+                        "id": c.short_id,
+                        "name": c.name,
+                        "image": image_name,
+                        "status": c.status,
+                        "node": "local",
+                        "created": c.attrs.get("Created", "")[:19].replace("T", " "),
+                        "ports": ", ".join(ports) or "—",
+                    })
+                except Exception:
+                    pass
+
         error = None
     except Exception as exc:
         rows = []
+        node_map = {}
         error = str(exc)
-    hostname = _socket.gethostname()
-    return render_template("admin/containers.html", rows=rows, error=error, hostname=hostname)
+
+    swarm_mode = bool(node_map)
+    return render_template(
+        "admin/containers.html",
+        rows=rows,
+        error=error,
+        swarm_mode=swarm_mode,
+        node_count=len(node_map),
+    )
 
 
 # ── Golden Proxies ───────────────────────────────────────────────────────────
