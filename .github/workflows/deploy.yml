@@ -162,6 +162,10 @@ jobs:
               --compose-file /opt/brickprofit/docker-stack.yml \
               --resolve-image never \
               brickprofit
+            # Force-update all locally-built services so new image content is always used
+            for SVC in nginx api web worker beat; do
+              docker service update --force brickprofit_${SVC} 2>/dev/null || true
+            done
 
   # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
   rolling-reboot:
