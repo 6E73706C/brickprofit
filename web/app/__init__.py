@@ -28,6 +28,10 @@ def create_app():
     from app.proxy_metrics import start_collector
     start_collector()
 
+    # Background Cassandra → Prometheus LEGO-set count collector
+    from app.lego_metrics import start_collector as start_lego_collector
+    start_lego_collector()
+
     from app.views.auth import bp as auth_bp
     from app.views.dashboard import bp as dashboard_bp
     from app.views.admin import bp as admin_bp
