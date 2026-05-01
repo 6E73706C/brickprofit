@@ -3,11 +3,16 @@ proxy-fetcher – periodically pulls free proxy lists from GitHub and upserts
 them into the Cassandra `proxies` table.
 
 Sources (raw GitHub content, updated frequently):
-  - TheSpeedX/PROXY-List   → HTTP, SOCKS4, SOCKS5
-  - monosans/proxy-list    → HTTP, SOCKS4, SOCKS5
-  - clarketm/proxy-list    → HTTP
-  - hookzof/socks5_list    → SOCKS5
-  - mmpx12/proxy-list      → HTTP, SOCKS4, SOCKS5
+  - TheSpeedX/PROXY-List          → HTTP, SOCKS4, SOCKS5
+  - monosans/proxy-list           → HTTP, SOCKS4, SOCKS5
+  - clarketm/proxy-list           → HTTP
+  - hookzof/socks5_list           → SOCKS5
+  - mmpx12/proxy-list             → HTTP, SOCKS4, SOCKS5
+  - proxifly/free-proxy-list      → HTTP, SOCKS4, SOCKS5
+  - iplocate/free-proxy-list      → HTTP, SOCKS4, SOCKS5
+  - vakhov/fresh-proxy-list       → HTTP, SOCKS4, SOCKS5
+  - VPSLabCloud/VPSLab-Free-Proxy-List → HTTP, SOCKS4, SOCKS5
+  - Thordata/awesome-free-proxy-list   → HTTP, SOCKS4, SOCKS5
 """
 
 import logging
@@ -43,17 +48,54 @@ if CASSANDRA_HOSTS and CASSANDRA_HOSTS[0].startswith("["):
 # ── Proxy sources ─────────────────────────────────────────────────────────────
 SOURCES = [
     # (url, protocol, source_name)
+
+    # ── TheSpeedX/PROXY-List ──────────────────────────────────────────────────
     ("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",   "http",   "TheSpeedX"),
     ("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt", "socks4", "TheSpeedX"),
     ("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt", "socks5", "TheSpeedX"),
+
+    # ── monosans/proxy-list ───────────────────────────────────────────────────
     ("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",   "http",   "monosans"),
     ("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt", "socks4", "monosans"),
     ("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt", "socks5", "monosans"),
+
+    # ── clarketm/proxy-list ───────────────────────────────────────────────────
     ("https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt", "http", "clarketm"),
-    ("https://raw.githubusercontent.com/hookzof/socks5_list/master/list.txt",    "socks5", "hookzof"),
+
+    # ── hookzof/socks5_list ───────────────────────────────────────────────────
+    ("https://raw.githubusercontent.com/hookzof/socks5_list/master/list.txt", "socks5", "hookzof"),
+
+    # ── mmpx12/proxy-list ─────────────────────────────────────────────────────
     ("https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",   "http",   "mmpx12"),
     ("https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt", "socks4", "mmpx12"),
     ("https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt", "socks5", "mmpx12"),
+
+    # ── proxifly/free-proxy-list ──────────────────────────────────────────────
+    ("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",   "http",   "proxifly"),
+    ("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/socks4/data.txt", "socks4", "proxifly"),
+    ("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/socks5/data.txt", "socks5", "proxifly"),
+
+    # ── iplocate/free-proxy-list ──────────────────────────────────────────────
+    ("https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/http.txt",   "http",   "iplocate"),
+    ("https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/https.txt",  "http",   "iplocate"),
+    ("https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/socks4.txt", "socks4", "iplocate"),
+    ("https://raw.githubusercontent.com/iplocate/free-proxy-list/main/protocols/socks5.txt", "socks5", "iplocate"),
+
+    # ── vakhov/fresh-proxy-list ───────────────────────────────────────────────
+    ("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",   "http",   "vakhov"),
+    ("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/https.txt",  "http",   "vakhov"),
+    ("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/socks4.txt", "socks4", "vakhov"),
+    ("https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/socks5.txt", "socks5", "vakhov"),
+
+    # ── VPSLabCloud/VPSLab-Free-Proxy-List ───────────────────────────────────
+    ("https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/http_all.txt",   "http",   "vpslabcloud"),
+    ("https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/socks4_all.txt", "socks4", "vpslabcloud"),
+    ("https://raw.githubusercontent.com/VPSLabCloud/VPSLab-Free-Proxy-List/main/socks5_all.txt", "socks5", "vpslabcloud"),
+
+    # ── Thordata/awesome-free-proxy-list ─────────────────────────────────────
+    ("https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/http.txt",   "http",   "thordata"),
+    ("https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/socks4.txt", "socks4", "thordata"),
+    ("https://raw.githubusercontent.com/Thordata/awesome-free-proxy-list/main/proxies/socks5.txt", "socks5", "thordata"),
 ]
 
 PROXY_RE = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{2,5})$")
