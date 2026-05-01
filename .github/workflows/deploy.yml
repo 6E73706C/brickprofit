@@ -291,6 +291,46 @@ jobs:
           done
           echo "WARNING: Cassandra did not become ready on any node"
 
+      - name: Apply Cassandra schema migrations
+        env:
+          N0_HOST: ${{ vars.NODE0_HOST }}
+          N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
+          N1_HOST: ${{ vars.NODE1_HOST }}
+          N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
+          N2_HOST: ${{ vars.NODE2_HOST }}
+          N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
+        run: |
+          sudo apt-get install -y sshpass -qq
+          s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
+          MIGRATION="
+          USE brickprofit;
+          CREATE TABLE IF NOT EXISTS golden_proxies (
+            protocol   text,
+            ip         text,
+            port       int,
+            id         uuid,
+            source     text,
+            first_seen timestamp,
+            last_seen  timestamp,
+            is_active  boolean,
+            PRIMARY KEY (protocol, ip, port)
+          );
+          "
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            CONTAINER=$(s "$H" "$P" "docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}'" 2>/dev/null | head -1 || true)
+            if [ -n "$CONTAINER" ]; then
+              if s "$H" "$P" "docker exec $CONTAINER cqlsh -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'" >/dev/null 2>&1; then
+                echo "Applying migrations on $H..."
+                s "$H" "$P" "docker exec $CONTAINER cqlsh -u cassandra -p cassandra -e \"$MIGRATION\"" \
+                  && echo "Migrations applied." || echo "Migration error on $H (continuing)"
+                exit 0
+              fi
+            fi
+          done
+          echo "WARNING: Could not apply migrations – no Cassandra node reachable"
+
       - name: Sync Grafana admin password
         env:
           N0_HOST: ${{ vars.NODE0_HOST }}
