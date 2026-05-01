@@ -1,0 +1,7 @@
+---
+failure-threshold: error
+ignore:
+  - DL3006  # pin image versions – handled by explicit tags in each Dockerfile
+  - DL3008  # apt-get version pinning
+  - DL3009  # apt-get clean
+  - DL3015  # apt-get --no-install-recommends
