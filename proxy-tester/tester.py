@@ -13,8 +13,10 @@ Golden proxies are re-validated on every cycle:
 """
 
 import concurrent.futures
+import ipaddress
 import logging
 import os
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -38,7 +40,19 @@ CASSANDRA_PASSWORD = os.environ.get("CASSANDRA_PASSWORD", "cassandra")
 TEST_INTERVAL     = int(os.environ.get("TEST_INTERVAL_SECONDS", "1800"))   # 30 min
 TEST_TIMEOUT      = int(os.environ.get("TEST_TIMEOUT_SECONDS", "12"))
 MAX_WORKERS       = int(os.environ.get("TEST_MAX_WORKERS", "150"))
-TEST_URL          = "https://ifconfig.me/"
+
+# Plain-text IP echo services — rotated randomly to avoid rate-limits.
+# All return just the raw IP address with no HTML.
+TEST_URLS = [
+    "https://ifconfig.me/ip",
+    "https://api.ipify.org",
+    "https://ipinfo.io/ip",
+    "https://icanhazip.com",
+    "https://checkip.amazonaws.com",
+    "https://api4.my-ip.io/ip.txt",
+]
+# Keep the single name for own-IP detection (used in get_own_ip)
+TEST_URL = TEST_URLS[0]
 
 if CASSANDRA_HOSTS and CASSANDRA_HOSTS[0].startswith("["):
     import json
@@ -66,21 +80,36 @@ def connect(retries: int = 20, delay: int = 10):
             time.sleep(delay)
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def is_valid_ip(text: str) -> bool:
+    """Return True if text is a valid IPv4 or IPv6 address."""
+    try:
+        ipaddress.ip_address(text.strip())
+        return True
+    except ValueError:
+        return False
+
+
 # ── Own IP detection ──────────────────────────────────────────────────────────
 def get_own_ip() -> str:
     """Determine the server's real public IP so we can detect proxy spoofing."""
     headers = {"User-Agent": "curl/7.68.0"}
-    for attempt in range(1, 6):
-        try:
-            resp = requests.get(TEST_URL, timeout=15, headers=headers)
-            ip = resp.text.strip()
-            if ip:
-                log.info("Own public IP: %s", ip)
-                return ip
-        except Exception as exc:
-            log.warning("Own-IP attempt %d/5 failed: %s", attempt, exc)
-            time.sleep(5)
-    raise RuntimeError("Could not determine own public IP after 5 attempts")
+    urls = list(TEST_URLS)          # try all services in order
+    random.shuffle(urls)
+    for url in urls:
+        for attempt in range(1, 4):
+            try:
+                resp = requests.get(url, timeout=15, headers=headers)
+                ip = resp.text.strip()
+                if is_valid_ip(ip):
+                    log.info("Own public IP: %s (via %s)", ip, url)
+                    return ip
+                log.warning("Own-IP: unexpected response from %s: %r", url, ip[:80])
+                break
+            except Exception as exc:
+                log.warning("Own-IP attempt %d/3 via %s failed: %s", attempt, url, exc)
+                time.sleep(3)
+    raise RuntimeError("Could not determine own public IP from any test URL")
 
 
 # ── Proxy test ────────────────────────────────────────────────────────────────
@@ -88,7 +117,10 @@ def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
     """
     Returns True only when:
       1. The request through the proxy succeeds; AND
-      2. The returned IP is different from the server's real IP (no leak).
+      2. The returned IP is a valid IP and different from the server's real IP.
+
+    Rotates randomly across TEST_URLS to distribute load and avoid rate-limits.
+    Falls back to a second URL if the first returns a non-IP response.
     """
     if protocol == "http":
         proxy_url = f"http://{ip}:{port}"
@@ -100,18 +132,27 @@ def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
         return False
 
     proxies = {"http": proxy_url, "https": proxy_url}
-    try:
-        resp = requests.get(
-            TEST_URL,
-            proxies=proxies,
-            timeout=TEST_TIMEOUT,
-            headers={"User-Agent": "curl/7.68.0"},
-        )
-        returned_ip = resp.text.strip()
-        # Must be a plausible IP string and not our own IP
-        return bool(returned_ip) and returned_ip != own_ip and len(returned_ip) <= 45
-    except Exception:
-        return False
+    headers = {"User-Agent": "curl/7.68.0"}
+
+    # Pick two different URLs so we have a fallback if the first is rate-limited
+    candidates = random.sample(TEST_URLS, k=min(2, len(TEST_URLS)))
+    for url in candidates:
+        try:
+            resp = requests.get(
+                url,
+                proxies=proxies,
+                timeout=TEST_TIMEOUT,
+                headers=headers,
+            )
+            returned_ip = resp.text.strip()
+            if not is_valid_ip(returned_ip):
+                # Service returned HTML/error — try next candidate
+                continue
+            return returned_ip != own_ip
+        except Exception:
+            # Connection/timeout — proxy is bad, no point trying another URL
+            return False
+    return False
 
 
 # ── Test cycle ────────────────────────────────────────────────────────────────
