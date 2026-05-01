@@ -26,3 +26,18 @@
   {% endfor %}
 </div>
 {% endblock %}
+{% block extra_js %}<script>
+(function(){
+  function refresh(){
+    fetch('/admin/api/stats').then(r=>r.json()).then(d=>{
+      for(const [k,v] of Object.entries(d)){
+        const el=document.getElementById('stat-'+k);
+        if(el&&v!==null) el.textContent=Number(v).toLocaleString();
+      }
+      document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
+    }).catch(()=>{});
+  }
+  refresh();
+  setInterval(refresh,30000);
+})();
+</script>{% endblock %}
