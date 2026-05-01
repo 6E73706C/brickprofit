@@ -5,5 +5,4 @@ __pycache__/
 dist/
 build/
 .venv/
-nginx/ssl/         # never commit TLS private keys
 *.log
