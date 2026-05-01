@@ -144,51 +144,55 @@ def fetch_page(year: int, pg: int, proxies: dict | None, session) -> str | None:
 def parse_sets(html: str) -> list[dict]:
     """
     Parse catalog list HTML and return a list of dicts:
-      { item_no, description, image_url }
+      { item_no, description, image_url, large_image_url }
 
-    BrickLink's catalog table has rows like:
-      <TR> <TD> <IMG src="//img.bricklink.com/..."> </TD>
-           <TD> <B><A href="...">ITEM-NO</A></B><BR>Description text </TD>
-      </TR>
-    We handle both the legacy table layout and the newer div-based layout.
+    BrickLink catalog table structure per row (3 <TD> siblings in a <TR>):
+      TD[0] – thumbnail <IMG SRC='https://img.bricklink.com/ItemImage/ST/0/ITEM.t1.png'>
+      TD[1] – item_no link + optional (Inv) link
+      TD[2] – <strong>Set name</strong><FONT ...>parts/year/category</FONT>
+
+    Large image URL: replace /ST/ with /SL/ and strip the .t1 suffix:
+      ST/0/10463-1.t1.png  →  SL/0/10463-1.png
     """
     soup = BeautifulSoup(html, "lxml")
     results = []
-
-    # ── Strategy 1: table rows with catalog item links ────────────────────
-    # BrickLink item links follow: /v2/catalog/catalogitem.page?S=ITEMNO
-    item_links = soup.find_all("a", href=re.compile(r"catalogitem\.page\?S=", re.I))
     seen = set()
-    for link in item_links:
+
+    for row in soup.find_all("tr"):
+        tds = row.find_all("td", recursive=False)
+        if len(tds) < 3:
+            continue
+
+        # TD[1]: item_no from catalogitem.page link
+        link = tds[1].find("a", href=re.compile(r"catalogitem\.page\?S=", re.I))
+        if not link:
+            continue
         item_no = link.get_text(strip=True)
         if not item_no or item_no in seen:
             continue
         seen.add(item_no)
 
-        # Description: sibling text after the <A> or in the parent <TD>
-        parent_td = link.find_parent("td")
-        if parent_td:
-            # Strip the item_no part; remaining text is description
-            full_text = parent_td.get_text(separator=" ", strip=True)
-            description = full_text.replace(item_no, "", 1).strip(" -:")
-        else:
-            description = ""
+        # TD[2]: description from <strong> tag (the set name headline)
+        strong = tds[2].find("strong")
+        description = strong.get_text(strip=True) if strong else tds[2].get_text(strip=True).split("\n")[0].strip()
 
-        # Image: look in adjacent <TD> or parent <TR>
-        parent_row = link.find_parent("tr")
+        # TD[0]: thumbnail image
+        img = tds[0].find("img")
         image_url = ""
-        if parent_row:
-            img = parent_row.find("img")
-            if img:
-                src = img.get("src", "")
-                if src.startswith("//"):
-                    src = "https:" + src
-                image_url = src
+        large_image_url = ""
+        if img:
+            src = img.get("src", "")
+            if src.startswith("//"):
+                src = "https:" + src
+            image_url = src
+            # Derive large image: ST/0/ITEM.t1.png → SL/0/ITEM.png
+            large_image_url = src.replace("/ItemImage/ST/", "/ItemImage/SL/").replace(".t1.png", ".png")
 
         results.append({
             "item_no": item_no,
             "description": description,
             "image_url": image_url,
+            "large_image_url": large_image_url,
         })
 
     return results
@@ -220,7 +224,6 @@ def prepare_statements(session):
 def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: datetime):
     """Insert or update a lego_set row."""
     try:
-        # Try insert with IF NOT EXISTS semantics via Cassandra LWT
         result = session.execute(
             """
             INSERT INTO lego_sets (year, item_no, description, image_url, first_seen, last_seen)
@@ -230,7 +233,6 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
             (year, item["item_no"], item["description"], item["image_url"], now, now),
         )
         if not result.one().applied:
-            # Row already exists, just refresh last_seen + possibly improved data
             session.execute(
                 update_stmt,
                 (now, item["description"], item["image_url"], year, item["item_no"]),

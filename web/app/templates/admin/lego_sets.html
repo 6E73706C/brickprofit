@@ -27,7 +27,7 @@
     <table class="bp-tbl">
       <thead>
         <tr>
-          <th style="width:60px;">Image</th>
+          <th style="width:64px;">Image</th>
           <th>Item No</th>
           <th>Description</th>
           <th>Year</th>
@@ -37,11 +37,16 @@
       </thead>
       <tbody id="lego-tbody">
         {% for r in rows %}
+        {% set large_url = r.image_url | replace('/ItemImage/ST/', '/ItemImage/SL/') | replace('.t1.png', '.png') if r.image_url else '' %}
         <tr>
           <td>
             {% if r.image_url %}
             <img src="{{ r.image_url }}" alt="{{ r.item_no }}"
-                 style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;">
+                 data-large="{{ large_url }}"
+                 data-name="{{ r.description or r.item_no }}"
+                 title="Click for full size"
+                 onclick="openImg(this)"
+                 style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">
             {% else %}
             <span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>
             {% endif %}
@@ -67,11 +72,57 @@
   </div>
 </div>
 {% include "admin/_pagination.html" %}
+
+<!-- Full-size image modal -->
+<div id="img-modal" onclick="closeImg()" style="
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.85);
+  align-items:center;justify-content:center;cursor:zoom-out;">
+  <div onclick="event.stopPropagation()" style="position:relative;max-width:90vw;max-height:90vh;">
+    <img id="img-modal-img" src="" alt="" style="
+      max-width:90vw;max-height:85vh;
+      border-radius:10px;display:block;
+      box-shadow:0 0 60px rgba(0,0,0,.8);">
+    <div id="img-modal-name" style="
+      text-align:center;color:#f1f5f9;font-size:.9rem;
+      margin-top:.75rem;padding:0 1rem;"></div>
+    <button onclick="closeImg()" style="
+      position:absolute;top:-12px;right:-12px;
+      background:#1e293b;border:1px solid #334155;color:#f1f5f9;
+      width:32px;height:32px;border-radius:50%;
+      font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+      <i class="bi bi-x"></i>
+    </button>
+  </div>
+</div>
 {% endblock %}
 {% block extra_js %}<script>
+// ── Full-size image modal ────────────────────────────────────────────────────
+function openImg(el){
+  const modal=document.getElementById('img-modal');
+  const mimg=document.getElementById('img-modal-img');
+  const mname=document.getElementById('img-modal-name');
+  mimg.src=el.dataset.large||el.src;
+  mimg.alt=el.dataset.name||'';
+  mname.textContent=el.dataset.name||'';
+  modal.style.display='flex';
+  document.body.style.overflow='hidden';
+}
+function closeImg(){
+  document.getElementById('img-modal').style.display='none';
+  document.getElementById('img-modal-img').src='';
+  document.body.style.overflow='';
+}
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeImg(); });
+
+// ── Live polling ─────────────────────────────────────────────────────────────
 (function(){
   const yr='{{ year_filter }}';
   const pg={{ page }};
+  function largeUrl(thumb){
+    if(!thumb) return '';
+    return thumb.replace('/ItemImage/ST/','/ItemImage/SL/').replace('.t1.png','.png');
+  }
   function refresh(){
     fetch('/admin/api/lego-sets?year='+yr+'&page='+pg)
       .then(r=>r.json()).then(d=>{
@@ -82,16 +133,22 @@
         if(!d.rows.length){
           tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-boxes"></i>No LEGO sets yet &mdash; scraper is running.</div></td></tr>';
         } else {
-          tb.innerHTML=d.rows.map(r=>`<tr>
-            <td>${r.image_url
-              ? `<img src="${r.image_url}" alt="${r.item_no}" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;">`
-              : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>'}</td>
-            <td><span class="mono">${r.item_no}</span></td>
-            <td style="max-width:420px;white-space:normal;">${r.description||'—'}</td>
-            <td><span class="badge b-green">${r.year}</span></td>
-            <td class="dim">${r.first_seen}</td>
-            <td class="dim">${r.last_seen}</td>
-          </tr>`).join('');
+          tb.innerHTML=d.rows.map(r=>{
+            const thumb=r.image_url||'';
+            const large=largeUrl(thumb);
+            const name=(r.description||r.item_no).replace(/"/g,'&quot;');
+            const img=thumb
+              ? `<img src="${thumb}" alt="${r.item_no}" data-large="${large}" data-name="${name}" title="Click for full size" onclick="openImg(this)" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
+              : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>';
+            return `<tr>
+              <td>${img}</td>
+              <td><span class="mono">${r.item_no}</span></td>
+              <td style="max-width:420px;white-space:normal;">${r.description||'—'}</td>
+              <td><span class="badge b-green">${r.year}</span></td>
+              <td class="dim">${r.first_seen}</td>
+              <td class="dim">${r.last_seen}</td>
+            </tr>`;
+          }).join('');
         }
         document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
       }).catch(()=>{});
