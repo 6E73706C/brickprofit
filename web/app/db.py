@@ -3,10 +3,6 @@ import logging
 import os
 import time
 
-from cassandra.auth import PlainTextAuthProvider
-from cassandra.cluster import Cluster, NoHostAvailable
-from cassandra.policies import DCAwareRoundRobinPolicy
-
 log = logging.getLogger(__name__)
 
 _session = None
@@ -22,6 +18,11 @@ def _parse_hosts(raw: str) -> list[str]:
 def get_session():
     global _session
     if _session is None:
+        # Lazy import so cassandra-driver doesn't block app startup
+        from cassandra.auth import PlainTextAuthProvider
+        from cassandra.cluster import Cluster, NoHostAvailable
+        from cassandra.policies import DCAwareRoundRobinPolicy
+
         hosts = _parse_hosts(os.environ.get("CASSANDRA_HOSTS", "cassandra1,cassandra2,cassandra3"))
         keyspace = os.environ.get("CASSANDRA_KEYSPACE", "brickprofit")
         user = os.environ.get("CASSANDRA_USER", "cassandra")

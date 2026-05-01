@@ -272,6 +272,30 @@ jobs:
               break
             fi
           done
+
+      - name: Dump web & api service logs (debug)
+        if: always()
+        env:
+          N0_HOST: ${{ vars.NODE0_HOST }}
+          N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
+          N1_HOST: ${{ vars.NODE1_HOST }}
+          N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
+          N2_HOST: ${{ vars.NODE2_HOST }}
+          N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
+        run: |
+          sudo apt-get install -y sshpass -qq
+          s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            echo "=== $H: web service logs ==="
+            WID=$(s "$H" "$P" "docker ps -a --filter name=brickprofit_web --format '{{.ID}}'" 2>/dev/null | head -1 || true)
+            [ -n "$WID" ] && s "$H" "$P" "docker logs --tail 80 $WID 2>&1" || echo "  no web container on $H"
+            echo "=== $H: api service logs ==="
+            AID=$(s "$H" "$P" "docker ps -a --filter name=brickprofit_api --format '{{.ID}}'" 2>/dev/null | head -1 || true)
+            [ -n "$AID" ] && s "$H" "$P" "docker logs --tail 30 $AID 2>&1" || echo "  no api container on $H"
+          done
+
   rolling-reboot:
     runs-on: ubuntu-latest
     needs: deploy
