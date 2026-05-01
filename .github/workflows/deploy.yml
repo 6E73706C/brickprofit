@@ -175,6 +175,10 @@ jobs:
             for SVC in nginx api web worker beat; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
+            # Force-update monitoring services so provisioning config changes are picked up
+            for SVC in grafana prometheus node_exporter; do
+              docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
+            done
 
             # ── Init Cassandra schema (idempotent – IF NOT EXISTS guards) ──────
             echo "Waiting for cassandra1 to be ready..."
