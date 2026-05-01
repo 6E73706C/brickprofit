@@ -292,6 +292,25 @@ services:
         condition: on-failure
         delay: 30s
 
+  # ── Node Exporter (host metrics – runs on every node) ────────────────────
+  node_exporter:
+    image: prom/node-exporter:latest
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - monitoring_net
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+
   # ── Prometheus ────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
