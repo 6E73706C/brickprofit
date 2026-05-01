@@ -139,7 +139,7 @@ function pollBackfill(){
 function startBackfill(){
   document.getElementById('backfill-status').textContent='Starting…';
   document.getElementById('backfill-btn').disabled=true;
-  fetch('/admin/api/backfill-lego-images',{method:'POST'})
+  fetch('/admin/api/backfill-lego-images',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token() }}'}})
     .then(r=>{
       if(!r.ok) return r.text().then(t=>{throw new Error('Server error '+r.status+': '+t.slice(0,200));});
       return r.json();
