@@ -1,5 +1,10 @@
 import os
+import re
+import threading
+import time
+from pathlib import Path
 
+import requests as _requests
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
 
@@ -10,6 +15,62 @@ bp = Blueprint("admin", __name__)
 LEGO_IMAGES_DIR = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 
 PAGE_SIZE = 50
+
+# ── Image backfill ────────────────────────────────────────────────────────────
+_backfill_lock = threading.Lock()
+_backfill_state: dict = {"running": False, "done": 0, "total": 0, "errors": 0, "started_at": None}
+
+
+def _safe_filename(item_no: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
+
+
+def _backfill_worker(rows: list) -> None:
+    global _backfill_state
+    images_dir = Path(LEGO_IMAGES_DIR)
+    images_dir.mkdir(parents=True, exist_ok=True)
+    done = 0
+    errors = 0
+    for row in rows:
+        try:
+            item_no = row.item_no
+            image_url = row.image_url
+            if not item_no or not image_url:
+                done += 1
+                continue
+            # convert thumbnail URL to large image URL (same logic as scraper)
+            large_url = image_url.replace("/ItemImage/ST/", "/ItemImage/SL/")
+            large_url = re.sub(r"\.t1\.png$", ".png", large_url)
+            dest = images_dir / _safe_filename(item_no)
+            if dest.exists():
+                done += 1
+                with _backfill_lock:
+                    _backfill_state["done"] = done
+                continue
+            tmp = dest.with_suffix(".tmp")
+            try:
+                resp = _requests.get(large_url, timeout=15, stream=True)
+                resp.raise_for_status()
+                with open(tmp, "wb") as fh:
+                    for chunk in resp.iter_content(65536):
+                        fh.write(chunk)
+                tmp.rename(dest)
+            except Exception:
+                errors += 1
+                if tmp.exists():
+                    tmp.unlink(missing_ok=True)
+            done += 1
+            with _backfill_lock:
+                _backfill_state["done"] = done
+                _backfill_state["errors"] = errors
+            time.sleep(0.1)  # be polite, ~10 req/s
+        except Exception:
+            errors += 1
+            done += 1
+    with _backfill_lock:
+        _backfill_state["running"] = False
+        _backfill_state["done"] = done
+        _backfill_state["errors"] = errors
 
 
 def _page() -> int:
@@ -531,3 +592,45 @@ def api_containers_json():
         return jsonify({"rows": rows, "swarm_mode": bool(node_map), "node_count": len(node_map), "error": None})
     except Exception as exc:
         return jsonify({"rows": [], "swarm_mode": False, "node_count": 0, "error": str(exc)})
+
+
+# ── LEGO image backfill ───────────────────────────────────────────────────────
+@bp.post("/api/backfill-lego-images")
+@login_required
+def api_backfill_lego_images():
+    global _backfill_state
+    with _backfill_lock:
+        if _backfill_state["running"]:
+            return jsonify({"status": "already_running", **_backfill_state})
+    # collect all rows with an image URL
+    from datetime import datetime, timezone
+    session = get_session()
+    current_year = datetime.now(timezone.utc).year
+    all_rows = []
+    for y in range(2010, current_year + 2):
+        try:
+            r = session.execute(
+                "SELECT item_no, image_url FROM lego_sets WHERE year = %s", (y,)
+            )
+            all_rows.extend(r)
+        except Exception:
+            pass
+    rows_with_url = [r for r in all_rows if r.image_url]
+    with _backfill_lock:
+        _backfill_state = {
+            "running": True,
+            "done": 0,
+            "total": len(rows_with_url),
+            "errors": 0,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+    t = threading.Thread(target=_backfill_worker, args=(rows_with_url,), daemon=True)
+    t.start()
+    return jsonify({"status": "started", **_backfill_state})
+
+
+@bp.get("/api/backfill-lego-images")
+@login_required
+def api_backfill_lego_images_status():
+    with _backfill_lock:
+        return jsonify({"status": "running" if _backfill_state["running"] else "idle", **_backfill_state})

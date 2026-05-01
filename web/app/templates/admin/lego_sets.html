@@ -13,14 +13,20 @@
     <p class="ph-title"><i class="bi bi-boxes" style="color:#4ade80;margin-right:.4rem;"></i>LEGO Sets</p>
     <p class="ph-sub"><span id="lego-total">{{ total }}</span> sets scraped from BrickLink</p>
   </div>
-  <form style="display:flex;gap:.5rem;align-items:center;" method="get">
-    <select name="year" class="bp-select" onchange="this.form.submit()">
-      <option value="" {% if not year_filter %}selected{% endif %}>All years</option>
-      {% for y in available_years %}
-        <option value="{{ y }}" {% if year_filter|string == y|string %}selected{% endif %}>{{ y }}</option>
-      {% endfor %}
-    </select>
-  </form>
+  <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+    <form style="display:flex;gap:.5rem;align-items:center;" method="get">
+      <select name="year" class="bp-select" onchange="this.form.submit()">
+        <option value="" {% if not year_filter %}selected{% endif %}>All years</option>
+        {% for y in available_years %}
+          <option value="{{ y }}" {% if year_filter|string == y|string %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    <button id="backfill-btn" class="bp-btn" onclick="startBackfill()" title="Download all missing LEGO images from BrickLink">
+      <i class="bi bi-cloud-download"></i> Download Images
+    </button>
+    <span id="backfill-status" style="font-size:.82rem;color:#94a3b8;"></span>
+  </div>
 </div>
 <div class="bp-card">
   <div style="overflow-x:auto;">
@@ -103,6 +109,44 @@ document.getElementById('legoImgModal').addEventListener('show.bs.modal', functi
 document.getElementById('legoImgModal').addEventListener('hidden.bs.modal', function() {
   document.getElementById('legoImgModalImg').src = '';
 });
+
+// ── Image backfill ───────────────────────────────────────────────────────────
+let _backfillPoll = null;
+function updateBackfillStatus(d){
+  const btn=document.getElementById('backfill-btn');
+  const lbl=document.getElementById('backfill-status');
+  if(!btn||!lbl) return;
+  if(d.running){
+    const pct=d.total?Math.round(d.done/d.total*100):0;
+    lbl.textContent=`Downloading… ${d.done}/${d.total} (${pct}%) • ${d.errors} errors`;
+    btn.disabled=true;
+    if(!_backfillPoll) _backfillPoll=setInterval(pollBackfill,2000);
+  } else {
+    if(d.total!=null && d.done!=null){
+      lbl.textContent=d.errors>0
+        ? `Done: ${d.done} processed, ${d.errors} failed`
+        : d.done>0 ? `Done: ${d.done} images processed` : '';
+    } else { lbl.textContent=''; }
+    btn.disabled=false;
+    if(_backfillPoll){clearInterval(_backfillPoll);_backfillPoll=null;}
+  }
+}
+function pollBackfill(){
+  fetch('/admin/api/backfill-lego-images').then(r=>r.json()).then(updateBackfillStatus).catch(()=>{});
+}
+function startBackfill(){
+  document.getElementById('backfill-status').textContent='Starting…';
+  document.getElementById('backfill-btn').disabled=true;
+  fetch('/admin/api/backfill-lego-images',{method:'POST'})
+    .then(r=>r.json()).then(d=>{
+      updateBackfillStatus(d);
+    }).catch(e=>{
+      document.getElementById('backfill-status').textContent='Error: '+e;
+      document.getElementById('backfill-btn').disabled=false;
+    });
+}
+// check if a backfill is already running on page load
+pollBackfill();
 
 // ── Live polling ─────────────────────────────────────────────────────────────
 (function(){
