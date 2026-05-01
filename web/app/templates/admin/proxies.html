@@ -5,12 +5,11 @@
 <div class="ph">
   <div><p class="ph-title">Fresh Proxies</p><p class="ph-sub"><span id="proxies-total">{{ total }}</span> proxies awaiting testing</p></div>
   <form style="display:flex;gap:.5rem;align-items:center;" method="get">
-    <select name="protocol" class="bp-select">
+    <select name="protocol" class="bp-select" onchange="this.form.submit()">
       {% for p in protocols %}
         <option value="{{ p }}" {% if p == protocol %}selected{% endif %}>{{ p if p else 'All protocols' }}</option>
       {% endfor %}
     </select>
-    <button class="bp-btn" type="submit"><i class="bi bi-funnel-fill"></i> Filter</button>
   </form>
 </div>
 <div class="bp-card">
