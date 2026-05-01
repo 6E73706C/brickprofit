@@ -95,6 +95,9 @@ jobs:
                 ufw allow from \$NODE_IP to any port 7946 proto udp comment 'Swarm node comm UDP'
                 ufw allow from \$NODE_IP to any port 4789 proto udp comment 'Swarm overlay VXLAN'
                 ufw allow from \$NODE_IP to any port 9100 proto tcp comment 'node_exporter (Prometheus scrape)'
+                ufw allow from \$NODE_IP to any port 24007 proto tcp comment 'GlusterFS daemon'
+                ufw allow from \$NODE_IP to any port 24008 proto tcp comment 'GlusterFS mgmt'
+                ufw allow from \$NODE_IP to any port 49152:49251 proto tcp comment 'GlusterFS bricks'
               done
               # Allow Docker overlay subnets (10.0.0.0/8) to reach node_exporter
               # so Prometheus works even when containerised on the same host
@@ -134,6 +137,45 @@ jobs:
           s "$N0_HOST" "$N0_PASS" "docker node update --label-add cassandra=node2 $N1_ID || true"
           s "$N0_HOST" "$N0_PASS" "docker node update --label-add cassandra=node3 $N2_ID || true"
 
+          # ── GlusterFS – install & create brick dir on all nodes ────────────
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            s "$H" "$P" "
+              export DEBIAN_FRONTEND=noninteractive
+              dpkg -l glusterfs-server >/dev/null 2>&1 \
+                || apt-get install -y -qq glusterfs-server
+              systemctl enable --now glusterd
+              mkdir -p /data/glusterbrick/lego-images
+              mkdir -p /mnt/gluster/lego-images
+            "
+          done
+
+          # ── GlusterFS – create trusted pool (idempotent) from NODE0 ────────
+          s "$N0_HOST" "$N0_PASS" "
+            gluster peer probe $N1_HOST || true
+            gluster peer probe $N2_HOST || true
+            sleep 2
+            gluster volume info lego-images >/dev/null 2>&1 || \
+              gluster volume create lego-images replica 3 \
+                $N0_HOST:/data/glusterbrick/lego-images \
+                $N1_HOST:/data/glusterbrick/lego-images \
+                $N2_HOST:/data/glusterbrick/lego-images force
+            gluster volume start lego-images || true
+          "
+
+          # ── GlusterFS – mount on all nodes (idempotent) ────────────────────
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            s "$H" "$P" "
+              mountpoint -q /mnt/gluster/lego-images \
+                || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+              grep -qF 'lego-images' /etc/fstab \
+                || echo 'localhost:/lego-images /mnt/gluster/lego-images glusterfs defaults,_netdev 0 0' >> /etc/fstab
+            "
+          done
+
   # ── Step 2: Build images on all nodes in parallel ──────────────────────────
   build-node0:
     runs-on: ubuntu-latest
@@ -148,7 +190,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /opt/brickprofit/lego-images
+            mkdir -p /mnt/gluster/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -170,7 +212,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /opt/brickprofit/lego-images
+            mkdir -p /mnt/gluster/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -192,7 +234,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /opt/brickprofit/lego-images
+            mkdir -p /mnt/gluster/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}

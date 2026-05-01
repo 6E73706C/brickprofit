@@ -33,7 +33,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /opt/brickprofit/lego-images
+      device: /mnt/gluster/lego-images
 
 services:
 
