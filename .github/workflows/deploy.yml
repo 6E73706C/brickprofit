@@ -208,7 +208,16 @@ jobs:
           host: ${{ vars.NODE0_HOST }}
           username: root
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          envs: NODE0_HOST,NODE1_HOST,NODE2_HOST
           script: |
+            export NODE0_HOST="${{ vars.NODE0_HOST }}"
+            export NODE1_HOST="${{ vars.NODE1_HOST }}"
+            export NODE2_HOST="${{ vars.NODE2_HOST }}"
+            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
+              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
+              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
+            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
+               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
@@ -230,6 +239,14 @@ jobs:
           username: root
           password: ${{ secrets.NODE1_SSH_PASSWORD }}
           script: |
+            export NODE0_HOST="${{ vars.NODE0_HOST }}"
+            export NODE1_HOST="${{ vars.NODE1_HOST }}"
+            export NODE2_HOST="${{ vars.NODE2_HOST }}"
+            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
+              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
+              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
+            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
+               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
@@ -249,6 +266,14 @@ jobs:
           username: root
           password: ${{ secrets.NODE2_SSH_PASSWORD }}
           script: |
+            export NODE0_HOST="${{ vars.NODE0_HOST }}"
+            export NODE1_HOST="${{ vars.NODE1_HOST }}"
+            export NODE2_HOST="${{ vars.NODE2_HOST }}"
+            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
+              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
+              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
+            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
+               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
