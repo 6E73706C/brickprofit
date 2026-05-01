@@ -163,8 +163,9 @@ jobs:
               --resolve-image never \
               brickprofit
             # Force-update all locally-built services so new image content is always used
+            # --detach=true: don't block waiting for convergence (avoids hanging on crash loops)
             for SVC in nginx api web worker beat; do
-              docker service update --force brickprofit_${SVC} 2>/dev/null || true
+              docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
   # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
