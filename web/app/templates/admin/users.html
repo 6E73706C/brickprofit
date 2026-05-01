@@ -1,0 +1,39 @@
+{% extends "admin/layout.html" %}
+{% block title %}Users – Admin{% endblock %}
+{% block content %}
+{% set prev_page = page - 1 %}
+{% set next_page = page + 1 %}
+{% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h5 class="mb-0 text-secondary fw-normal">Users <span class="text-white fw-semibold">{{ total }}</span></h5>
+</div>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-striped table-hover mb-0">
+      <thead><tr>
+        <th>ID</th><th>Email</th><th>Username</th><th>Active</th><th>Created</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="font-monospace small text-secondary">{{ r.id }}</td>
+          <td>{{ r.email }}</td>
+          <td>{{ r.username }}</td>
+          <td>
+            {% if r.is_active %}
+              <span class="badge badge-active">Yes</span>
+            {% else %}
+              <span class="badge badge-inactive">No</span>
+            {% endif %}
+          </td>
+          <td class="small text-secondary">{{ r.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-secondary py-4">No records.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% include "admin/_pagination.html" %}
+{% endblock %}

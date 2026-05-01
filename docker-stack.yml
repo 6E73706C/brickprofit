@@ -122,6 +122,8 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/1
       - SECRET_KEY=${SECRET_KEY}
       - FLASK_ENV=production
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     networks:
       - frontend_net
       - backend_net
