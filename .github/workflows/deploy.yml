@@ -66,6 +66,41 @@ jobs:
               || git clone https://github.com/6E73706C/brickprofit.git /opt/brickprofit"
           done
 
+          # ── Harden firewall on all nodes (idempotent) ─────────────────────
+          # Allow: SSH (from anywhere – needed for CI), HTTP/S, and Docker Swarm
+          # ports only from the other swarm node IPs. Everything else is dropped.
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            s "$H" "$P" "
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get install -y -qq ufw
+
+              # Reset to a known state without disabling active rules mid-flight
+              ufw --force reset
+
+              # Default: deny inbound, allow outbound
+              ufw default deny incoming
+              ufw default allow outgoing
+
+              # Public-facing ports
+              ufw allow 22/tcp    comment 'SSH'
+              ufw allow 80/tcp    comment 'HTTP'
+              ufw allow 443/tcp   comment 'HTTPS'
+
+              # Docker Swarm management + overlay – restrict to swarm node IPs only
+              for NODE_IP in $N0_HOST $N1_HOST $N2_HOST; do
+                ufw allow from \$NODE_IP to any port 2377 proto tcp comment 'Swarm mgmt'
+                ufw allow from \$NODE_IP to any port 7946 proto tcp comment 'Swarm node comm TCP'
+                ufw allow from \$NODE_IP to any port 7946 proto udp comment 'Swarm node comm UDP'
+                ufw allow from \$NODE_IP to any port 4789 proto udp comment 'Swarm overlay VXLAN'
+              done
+
+              ufw --force enable
+              ufw status verbose
+            "
+          done
+
           # ── Init swarm on NODE0 (skip if already active) ──
           N0_STATE=$(s "$N0_HOST" "$N0_PASS" "docker info --format '{{.Swarm.LocalNodeState}}'")
           [ "$N0_STATE" = "active" ] \
