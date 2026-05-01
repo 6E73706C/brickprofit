@@ -103,6 +103,11 @@
     .bp-empty i { font-size:2.5rem; opacity:.25; display:block; margin-bottom:.75rem; }
 
     code { background:rgba(129,140,248,.1); color:#a5b4fc; border-radius:4px; padding:.1em .4em; font-size:.82em; }
+
+    /* live indicator */
+    @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.2}}
+    .live-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;
+              animation:livepulse 2s ease-in-out infinite;flex-shrink:0;}
   </style>
 </head>
 <body>
@@ -125,6 +130,9 @@
     <a class="snav {% if request.endpoint=='admin.sessions' %}active{% endif %}" href="{{ url_for('admin.sessions') }}"><i class="bi bi-key-fill"></i> Sessions</a>
     <a class="snav {% if request.endpoint=='admin.containers' %}active{% endif %}" href="{{ url_for('admin.containers') }}"><i class="bi bi-boxes"></i> Containers</a>
 
+    <div style="padding:.5rem .5rem .3rem;font-size:.72rem;color:#475569;display:flex;align-items:center;gap:.5rem;margin-top:.5rem;">
+      <span class="live-dot"></span> Live &bull; <span id="last-updated" style="font-variant-numeric:tabular-nums;">--:--:--</span>
+    </div>
     <a class="logout-lnk" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a>
   </nav>
 
@@ -141,5 +149,6 @@
   </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}{% endblock %}
 </body>
 </html>

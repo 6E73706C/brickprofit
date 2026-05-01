@@ -3,7 +3,7 @@
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
 <div class="ph">
-  <div><p class="ph-title">Fresh Proxies</p><p class="ph-sub">{{ total }} proxies awaiting testing</p></div>
+  <div><p class="ph-title">Fresh Proxies</p><p class="ph-sub"><span id="proxies-total">{{ total }}</span> proxies awaiting testing</p></div>
   <form style="display:flex;gap:.5rem;align-items:center;" method="get">
     <select name="protocol" class="bp-select">
       {% for p in protocols %}
@@ -17,7 +17,7 @@
   <div style="overflow-x:auto;">
     <table class="bp-tbl">
       <thead><tr><th>Protocol</th><th>IP</th><th>Port</th><th>Source</th><th>Status</th><th>First Seen</th><th>Last Seen</th></tr></thead>
-      <tbody>
+      <tbody id="proxies-tbody">
         {% for r in rows %}
         <tr>
           <td>
@@ -41,3 +41,38 @@
 </div>
 {% include "admin/_pagination.html" %}
 {% endblock %}
+{% block extra_js %}<script>
+(function(){
+  const proto='{{ protocol }}';
+  const pg={{ page }};
+  function badge(p){
+    return p==='http'?'<span class="badge b-http">HTTP</span>':
+           p==='socks4'?'<span class="badge b-socks4">SOCKS4</span>':
+           '<span class="badge b-socks5">SOCKS5</span>';
+  }
+  function refresh(){
+    fetch('/admin/api/proxies?protocol='+proto+'&page='+pg)
+      .then(r=>r.json()).then(d=>{
+        const tot=document.getElementById('proxies-total');
+        if(tot) tot.textContent=d.total;
+        const tb=document.getElementById('proxies-tbody');
+        if(!tb) return;
+        if(!d.rows||!d.rows.length){
+          tb.innerHTML='<tr><td colspan="7"><div class="bp-empty"><i class="bi bi-diagram-3"></i>No fresh proxies.</div></td></tr>';
+        } else {
+          tb.innerHTML=d.rows.map(r=>`<tr>
+            <td>${badge(r.protocol)}</td>
+            <td><span class="mono">${r.ip}</span></td>
+            <td>${r.port}</td>
+            <td class="dim">${r.source}</td>
+            <td>${r.is_active?'<span class="badge b-green">Active</span>':'<span class="badge b-gray">Inactive</span>'}</td>
+            <td class="dim">${r.first_seen}</td>
+            <td class="dim">${r.last_seen}</td>
+          </tr>`).join('');
+        }
+        document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
+      }).catch(()=>{});
+  }
+  setInterval(refresh,30000);
+})();
+</script>{% endblock %}

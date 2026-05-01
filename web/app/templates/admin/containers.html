@@ -4,7 +4,7 @@
 <div class="ph">
   <div>
     <p class="ph-title"><i class="bi bi-boxes" style="margin-right:.4rem;"></i>Containers</p>
-    <p class="ph-sub">
+    <p class="ph-sub" id="containers-sub">
       {% if swarm_mode %}
         Swarm cluster &mdash; {{ node_count }} node{{ 's' if node_count != 1 }} &mdash; {{ rows|length }} running task{{ 's' if rows|length != 1 }}
       {% else %}
@@ -33,7 +33,7 @@
           {% if not swarm_mode %}<th>Ports</th>{% endif %}
         </tr>
       </thead>
-      <tbody>
+      <tbody id="containers-tbody">
         {% for c in rows %}
         <tr>
           <td><span class="mono">{{ c.id }}</span></td>
@@ -55,3 +55,35 @@
 </div>
 {% endif %}
 {% endblock %}
+{% block extra_js %}<script>
+(function(){
+  function sc(s){return s==='running'?'b-green':['starting','preparing'].includes(s)?'b-yellow':'b-gray';}
+  function refresh(){
+    fetch('/admin/api/containers').then(r=>r.json()).then(d=>{
+      const sub=document.getElementById('containers-sub');
+      if(sub){
+        if(d.swarm_mode)
+          sub.textContent='Swarm cluster \u2014 '+d.node_count+' node'+(d.node_count!==1?'s':'')+' \u2014 '+d.rows.length+' running task'+(d.rows.length!==1?'s':'');
+        else
+          sub.textContent='Local node \u2014 '+d.rows.length+' running';
+      }
+      const tb=document.getElementById('containers-tbody');
+      if(!tb) return;
+      if(!d.rows||!d.rows.length){
+        tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-boxes"></i>No running containers found.</div></td></tr>';
+      } else {
+        tb.innerHTML=d.rows.map(c=>`<tr>
+          <td><span class="mono">${c.id}</span></td>
+          <td>${c.name}</td>
+          <td class="dim">${c.image}</td>
+          <td><span class="badge ${sc(c.status)}">${c.status}</span></td>
+          <td class="dim" style="font-size:.78rem">${c.node}</td>
+          <td class="dim">${c.created}</td>
+        </tr>`).join('');
+      }
+      document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
+    }).catch(()=>{});
+  }
+  setInterval(refresh,10000);
+})();
+</script>{% endblock %}

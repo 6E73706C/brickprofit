@@ -10,7 +10,7 @@
 <div class="ph">
   <div>
     <p class="ph-title"><i class="bi bi-trophy-fill" style="color:#fbbf24;margin-right:.4rem;"></i>Golden Proxies</p>
-    <p class="ph-sub">{{ total }} verified working proxies</p>
+    <p class="ph-sub"><span id="golden-total">{{ total }}</span> verified working proxies</p>
   </div>
   <form style="display:flex;gap:.5rem;align-items:center;" method="get">
     <select name="protocol" class="bp-select">
@@ -25,7 +25,7 @@
   <div style="overflow-x:auto;">
     <table class="bp-tbl">
       <thead><tr><th>Protocol</th><th>IP</th><th>Port</th><th>Source</th><th>First Seen</th><th>Last Verified</th></tr></thead>
-      <tbody>
+      <tbody id="golden-tbody">
         {% for r in rows %}
         <tr>
           <td>
@@ -48,3 +48,37 @@
 </div>
 {% include "admin/_pagination.html" %}
 {% endblock %}
+{% block extra_js %}<script>
+(function(){
+  const proto='{{ protocol }}';
+  const pg={{ page }};
+  function badge(p){
+    return p==='http'?'<span class="badge b-http">HTTP</span>':
+           p==='socks4'?'<span class="badge b-socks4">SOCKS4</span>':
+           '<span class="badge b-socks5">SOCKS5</span>';
+  }
+  function refresh(){
+    fetch('/admin/api/golden-proxies?protocol='+proto+'&page='+pg)
+      .then(r=>r.json()).then(d=>{
+        const tot=document.getElementById('golden-total');
+        if(tot) tot.textContent=d.total;
+        const tb=document.getElementById('golden-tbody');
+        if(!tb) return;
+        if(!d.rows||!d.rows.length){
+          tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-trophy"></i>No golden proxies yet &mdash; tester is running.</div></td></tr>';
+        } else {
+          tb.innerHTML=d.rows.map(r=>`<tr>
+            <td>${badge(r.protocol)}</td>
+            <td><span class="mono">${r.ip}</span></td>
+            <td>${r.port}</td>
+            <td class="dim">${r.source}</td>
+            <td class="dim">${r.first_seen}</td>
+            <td class="dim">${r.last_seen}</td>
+          </tr>`).join('');
+        }
+        document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
+      }).catch(()=>{});
+  }
+  setInterval(refresh,30000);
+})();
+</script>{% endblock %}

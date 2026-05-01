@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 from flask_login import login_required
 
 from app.db import get_session
@@ -249,3 +249,179 @@ def sessions():
     rows = session.execute('SELECT "token", user_id, expires_at FROM sessions')
     data, total = _paginate(rows, page)
     return render_template("admin/sessions.html", rows=data, page=page, total=total, page_size=PAGE_SIZE)
+
+
+# ── JSON API endpoints ────────────────────────────────────────────────────────
+def _fmt_ts(ts) -> str:
+    if ts is None:
+        return ""
+    return str(ts)[:19].replace("T", " ")
+
+
+@bp.get("/api/stats")
+@login_required
+def api_stats():
+    session = get_session()
+    counts = {}
+    for table in ("users", "items", "proxies", "golden_proxies", "sessions"):
+        try:
+            row = session.execute(f"SELECT COUNT(*) FROM {table}").one()  # noqa: S608
+            counts[table] = int(row[0])
+        except Exception:
+            counts[table] = None
+    return jsonify(counts)
+
+
+@bp.get("/api/proxies")
+@login_required
+def api_proxies():
+    session = get_session()
+    page = _page()
+    protocol = request.args.get("protocol", "")
+    try:
+        if protocol:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, is_active, first_seen, last_seen FROM proxies WHERE protocol = %s",
+                (protocol,),
+            )
+        else:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, is_active, first_seen, last_seen FROM proxies"
+            )
+        data, total = _paginate(rows, page)
+        return jsonify({
+            "total": total,
+            "rows": [
+                {
+                    "protocol": r.protocol,
+                    "ip": r.ip,
+                    "port": r.port,
+                    "source": r.source or "",
+                    "is_active": bool(r.is_active),
+                    "first_seen": _fmt_ts(r.first_seen),
+                    "last_seen": _fmt_ts(r.last_seen),
+                }
+                for r in data
+            ],
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc), "rows": [], "total": 0})
+
+
+@bp.get("/api/golden-proxies")
+@login_required
+def api_golden_proxies_json():
+    session = get_session()
+    page = _page()
+    protocol = request.args.get("protocol", "")
+    try:
+        if protocol:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies WHERE protocol = %s",
+                (protocol,),
+            )
+        else:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies"
+            )
+        data, total = _paginate(rows, page)
+        return jsonify({
+            "total": total,
+            "rows": [
+                {
+                    "protocol": r.protocol,
+                    "ip": r.ip,
+                    "port": r.port,
+                    "source": r.source or "",
+                    "first_seen": _fmt_ts(r.first_seen),
+                    "last_seen": _fmt_ts(r.last_seen),
+                }
+                for r in data
+            ],
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc), "rows": [], "total": 0})
+
+
+@bp.get("/api/containers")
+@login_required
+def api_containers_json():
+    try:
+        import docker as docker_sdk
+        client = docker_sdk.from_env()
+        node_map = {}
+        try:
+            for n in client.nodes.list():
+                desc = n.attrs.get("Description", {})
+                hostname = desc.get("Hostname", n.short_id)
+                addr = n.attrs.get("Status", {}).get("Addr", "")
+                if not addr or addr == "0.0.0.0":
+                    mgr_addr = n.attrs.get("ManagerStatus", {}).get("Addr", "")
+                    addr = mgr_addr.split(":")[0] if mgr_addr else ""
+                node_map[n.id] = f"{hostname} ({addr})" if addr else hostname
+        except Exception:
+            pass
+        svc_map = {}
+        try:
+            for s in client.services.list():
+                svc_map[s.id] = s.name
+        except Exception:
+            pass
+        rows = []
+        if node_map:
+            try:
+                tasks = client.api.tasks()
+            except Exception:
+                tasks = []
+            for t in tasks:
+                state = (t.get("Status") or {}).get("State", "")
+                if state not in ("running", "starting", "preparing"):
+                    continue
+                try:
+                    spec = t.get("Spec", {})
+                    image = spec.get("ContainerSpec", {}).get("Image", "")
+                    if "@" in image:
+                        image = image.split("@")[0]
+                    svc_id = t.get("ServiceID", "")
+                    svc_name = svc_map.get(svc_id, svc_id[:12] if svc_id else "—")
+                    slot = t.get("Slot")
+                    name = f"{svc_name}.{slot}" if slot else svc_name
+                    node_id = t.get("NodeID", "")
+                    node_label = node_map.get(node_id, node_id[:12] if node_id else "—")
+                    cid = ((t.get("Status") or {}).get("ContainerStatus") or {}).get("ContainerID", "")
+                    rows.append({
+                        "id": cid[:12] if cid else "—",
+                        "name": name,
+                        "image": image,
+                        "status": state,
+                        "node": node_label,
+                        "created": t.get("CreatedAt", "")[:19].replace("T", " "),
+                        "ports": "—",
+                    })
+                except Exception:
+                    pass
+            rows.sort(key=lambda r: (r["node"], r["name"]))
+        else:
+            for c in client.containers.list(all=False):
+                try:
+                    ports = []
+                    for cp, bindings in (c.ports or {}).items():
+                        if bindings:
+                            for b in bindings:
+                                ports.append(f"{b['HostPort']}→{cp}")
+                        else:
+                            ports.append(cp)
+                    rows.append({
+                        "id": c.short_id,
+                        "name": c.name,
+                        "image": (c.attrs.get("Config") or {}).get("Image") or c.short_id,
+                        "status": c.status,
+                        "node": "local",
+                        "created": c.attrs.get("Created", "")[:19].replace("T", " "),
+                        "ports": ", ".join(ports) or "—",
+                    })
+                except Exception:
+                    pass
+        return jsonify({"rows": rows, "swarm_mode": bool(node_map), "node_count": len(node_map), "error": None})
+    except Exception as exc:
+        return jsonify({"rows": [], "swarm_mode": False, "node_count": 0, "error": str(exc)})
