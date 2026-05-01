@@ -245,11 +245,11 @@ services:
           cpus: "1"
           memory: 256M
 
-  # ── LEGO Scraper (scrapes BrickLink catalog → lego_sets table) ────────────
-  lego-scraper:
-    image: brickprofit-lego-scraper:latest
+  # ── Sets Scraper (scrapes BrickLink catalog → lego_sets table) ────────────
+  sets-scraper:
+    image: brickprofit-sets-scraper:latest
     build:
-      context: ./lego-scraper
+      context: ./sets-scraper
     environment:
       - CASSANDRA_HOSTS=["cassandra1","cassandra2","cassandra3"]
       - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}

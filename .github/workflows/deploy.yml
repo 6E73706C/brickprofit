@@ -154,7 +154,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
-            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
+            docker build --tag "brickprofit-sets-scraper:latest" ./sets-scraper
 
   build-node1:
     runs-on: ubuntu-latest
@@ -175,7 +175,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
-            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
+            docker build --tag "brickprofit-sets-scraper:latest" ./sets-scraper
 
   build-node2:
     runs-on: ubuntu-latest
@@ -196,7 +196,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
-            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
+            docker build --tag "brickprofit-sets-scraper:latest" ./sets-scraper
 
   # ── Step 3: Deploy stack from manager ──────────────────────────────────────
   deploy:
@@ -228,7 +228,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -257,7 +257,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -284,7 +284,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 

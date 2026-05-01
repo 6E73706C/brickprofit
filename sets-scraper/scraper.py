@@ -1,5 +1,5 @@
 """
-lego-scraper – scrapes BrickLink catalog for LEGO sets by year.
+sets-scraper – scrapes BrickLink catalog for LEGO sets by year.
 
 For each year in the range  [current_year - 5 … current_year + 1]  it fetches:
   https://www.bricklink.com/catalogList.asp?catType=S&itemYear=YEAR
