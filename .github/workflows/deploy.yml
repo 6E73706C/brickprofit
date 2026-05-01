@@ -96,6 +96,9 @@ jobs:
                 ufw allow from \$NODE_IP to any port 4789 proto udp comment 'Swarm overlay VXLAN'
                 ufw allow from \$NODE_IP to any port 9100 proto tcp comment 'node_exporter (Prometheus scrape)'
               done
+              # Allow Docker overlay subnets (10.0.0.0/8) to reach node_exporter
+              # so Prometheus works even when containerised on the same host
+              ufw allow from 10.0.0.0/8 to any port 9100 proto tcp comment 'node_exporter overlay access'
 
               ufw --force enable
               ufw status verbose
