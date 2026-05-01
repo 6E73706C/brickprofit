@@ -28,9 +28,12 @@ def create_app():
     from app.views.dashboard import bp as dashboard_bp
     from app.views.admin import bp as admin_bp
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(admin_bp, url_prefix="/admin")
+    if "auth" not in app.blueprints:
+        app.register_blueprint(auth_bp)
+    if "dashboard" not in app.blueprints:
+        app.register_blueprint(dashboard_bp)
+    if "admin" not in app.blueprints:
+        app.register_blueprint(admin_bp, url_prefix="/admin")
 
     @app.get("/health")
     def health():
