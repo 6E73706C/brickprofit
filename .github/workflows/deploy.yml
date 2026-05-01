@@ -205,6 +205,13 @@ jobs:
             HOST="${NODE%%:*}"
             PASS="${NODE##*:}"
 
+            # Skip reboot if uptime is under 24 hours
+            UPTIME_SECS=$(s "$HOST" "$PASS" "awk '{print int(\$1)}' /proc/uptime")
+            if [ "$UPTIME_SECS" -lt 86400 ]; then
+              echo "⏭  Skipping $HOST — uptime ${UPTIME_SECS}s (< 24 h)."
+              continue
+            fi
+
             # Get this node's swarm ID from the node itself
             NODE_ID=$(s "$HOST" "$PASS" "docker node inspect self --format '{{.ID}}'")
 
