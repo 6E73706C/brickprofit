@@ -9,6 +9,7 @@ from prometheus_flask_exporter import PrometheusMetrics
 from app.auth import login_manager
 
 csrf = CSRFProtect()
+limiter = Limiter(get_remote_address, default_limits=[])
 
 
 def create_app():
@@ -21,17 +22,11 @@ def create_app():
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config.from_envvar("FLASK_SETTINGS", silent=True)
 
-    # Extensions
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/1")
+    app.config["RATELIMIT_STORAGE_URI"] = redis_url
+    limiter.init_app(app)
     csrf.init_app(app)
     login_manager.init_app(app)
-
-    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/1")
-    limiter = Limiter(
-        get_remote_address,
-        app=app,
-        storage_uri=redis_url,
-        default_limits=[],
-    )
 
     # Prometheus metrics at /metrics
     PrometheusMetrics(app)
@@ -44,8 +39,8 @@ def create_app():
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
 
-    # Rate-limit the login POST: 10 attempts per minute per IP
-    limiter.limit("10 per minute")(auth_bp.view_functions["login_post"])
+    # Rate-limit login POST: 10 attempts / minute / IP, brute-force protection
+    limiter.limit("10 per minute")(app.view_functions["auth.login_post"])
 
     @app.get("/health")
     def health():
