@@ -14,6 +14,9 @@ networks:
   backend_net:
     driver: overlay
     attachable: true
+  docker_proxy_net:
+    driver: overlay
+    attachable: false
   monitoring_net:
     driver: overlay
     attachable: true
@@ -131,12 +134,13 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - LEGO_IMAGES_DIR=/data/lego-images
+      - DOCKER_HOST=tcp://docker-socket-proxy:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - lego_images:/data/lego-images:ro
     networks:
       - frontend_net
       - backend_net
+      - docker_proxy_net
     deploy:
       replicas: 3
       update_config:
@@ -158,6 +162,49 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # ── Docker Socket Proxy (read-only Docker API for admin panel) ───────────
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    environment:
+      # Read-only endpoints required by the Containers admin page
+      - CONTAINERS=1
+      - SERVICES=1
+      - TASKS=1
+      - NODES=1
+      # Everything else denied
+      - AUTH=0
+      - SECRETS=0
+      - POST=0
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - EXEC=0
+      - IMAGES=0
+      - INFO=0
+      - NETWORKS=0
+      - PLUGINS=0
+      - SESSION=0
+      - SWARM=0
+      - SYSTEM=0
+      - VOLUMES=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker_proxy_net
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: 64M
 
   # ── Celery Worker  (async / background tasks) ─────────────────────────────
   worker:
