@@ -198,6 +198,14 @@ jobs:
               echo "WARNING: Cassandra did not become ready in time – skipping schema init"
             fi
 
+            # ── Sync Grafana admin password from env (idempotent) ─────────────
+            source /opt/brickprofit/.env
+            GRAFANA_CONTAINER=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1)
+            if [ -n "$GRAFANA_CONTAINER" ]; then
+              docker exec "$GRAFANA_CONTAINER" grafana cli admin reset-admin-password "$GRAFANA_PASSWORD" \
+                && echo "Grafana password synced." || echo "Grafana password sync failed (non-fatal)"
+            fi
+
   # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
   rolling-reboot:
     runs-on: ubuntu-latest
