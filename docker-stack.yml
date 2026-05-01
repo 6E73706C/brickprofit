@@ -128,7 +128,7 @@ services:
       - frontend_net
       - backend_net
     deploy:
-      replicas: 2
+      replicas: 3
       update_config:
         parallelism: 1
         delay: 15s
@@ -164,7 +164,7 @@ services:
     networks:
       - backend_net
     deploy:
-      replicas: 2
+      replicas: 3
       update_config:
         parallelism: 1
         delay: 20s
