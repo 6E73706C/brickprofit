@@ -45,7 +45,7 @@
                  data-large="{{ large_url }}"
                  data-name="{{ r.description or r.item_no }}"
                  title="Click for full size"
-                 onclick="openImg(this)"
+                 data-bs-toggle="modal" data-bs-target="#legoImgModal"
                  style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">
             {% else %}
             <span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>
@@ -74,46 +74,35 @@
 {% include "admin/_pagination.html" %}
 
 <!-- Full-size image modal -->
-<div id="img-modal" onclick="closeImg()" style="
-  display:none;position:fixed;inset:0;z-index:9999;
-  background:rgba(0,0,0,.85);
-  align-items:center;justify-content:center;cursor:zoom-out;">
-  <div onclick="event.stopPropagation()" style="position:relative;max-width:90vw;max-height:90vh;">
-    <img id="img-modal-img" src="" alt="" style="
-      max-width:90vw;max-height:85vh;
-      border-radius:10px;display:block;
-      box-shadow:0 0 60px rgba(0,0,0,.8);">
-    <div id="img-modal-name" style="
-      text-align:center;color:#f1f5f9;font-size:.9rem;
-      margin-top:.75rem;padding:0 1rem;"></div>
-    <button onclick="closeImg()" style="
-      position:absolute;top:-12px;right:-12px;
-      background:#1e293b;border:1px solid #334155;color:#f1f5f9;
-      width:32px;height:32px;border-radius:50%;
-      font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-      <i class="bi bi-x"></i>
-    </button>
+<div class="modal fade" id="legoImgModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content" style="background:#0f172a;border:1px solid #334155;">
+      <div class="modal-header" style="border-color:#334155;padding:.75rem 1rem;">
+        <h6 class="modal-title" id="legoImgModalLabel" style="color:#f1f5f9;font-size:.9rem;margin:0;"></h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" style="filter:brightness(.6);"></button>
+      </div>
+      <div class="modal-body" style="text-align:center;padding:1.5rem;background:#0f172a;">
+        <img id="legoImgModalImg" src="" alt="" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;">
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}
 {% block extra_js %}<script>
-// ── Full-size image modal ────────────────────────────────────────────────────
-function openImg(el){
-  const modal=document.getElementById('img-modal');
-  const mimg=document.getElementById('img-modal-img');
-  const mname=document.getElementById('img-modal-name');
-  mimg.src=el.dataset.large||el.src;
-  mimg.alt=el.dataset.name||'';
-  mname.textContent=el.dataset.name||'';
-  modal.style.display='flex';
-  document.body.style.overflow='hidden';
-}
-function closeImg(){
-  document.getElementById('img-modal').style.display='none';
-  document.getElementById('img-modal-img').src='';
-  document.body.style.overflow='';
-}
-document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeImg(); });
+// ── Full-size image modal (Bootstrap) ────────────────────────────────────────
+const legoModal = new bootstrap.Modal(document.getElementById('legoImgModal'));
+document.getElementById('legoImgModal').addEventListener('show.bs.modal', function(e) {
+  const trigger = e.relatedTarget;
+  if (!trigger) return;
+  const large = trigger.dataset.large || trigger.src;
+  const name  = trigger.dataset.name  || trigger.alt || '';
+  document.getElementById('legoImgModalImg').src = large;
+  document.getElementById('legoImgModalImg').alt = name;
+  document.getElementById('legoImgModalLabel').textContent = name;
+});
+document.getElementById('legoImgModal').addEventListener('hidden.bs.modal', function() {
+  document.getElementById('legoImgModalImg').src = '';
+});
 
 // ── Live polling ─────────────────────────────────────────────────────────────
 (function(){
@@ -138,7 +127,7 @@ document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeImg()
             const large=largeUrl(thumb);
             const name=(r.description||r.item_no).replace(/"/g,'&quot;');
             const img=thumb
-              ? `<img src="${thumb}" alt="${r.item_no}" data-large="${large}" data-name="${name}" title="Click for full size" onclick="openImg(this)" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
+              ? `<img src="${thumb}" alt="${r.item_no}" data-large="${large}" data-name="${name}" title="Click for full size" data-bs-toggle="modal" data-bs-target="#legoImgModal" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
               : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>';
             return `<tr>
               <td>${img}</td>
