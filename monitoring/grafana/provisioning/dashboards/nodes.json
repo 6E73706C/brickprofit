@@ -14,7 +14,7 @@
       "title": "CPU Usage %",
       "type": "timeseries",
       "gridPos": {"h":8,"w":24,"x":0,"y":1},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"lineWidth": 2}},
@@ -36,7 +36,7 @@
       "title": "Memory Usage %",
       "type": "timeseries",
       "gridPos": {"h":8,"w":12,"x":0,"y":10},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"lineWidth": 2}},
@@ -55,7 +55,7 @@
       "title": "Memory Available",
       "type": "timeseries",
       "gridPos": {"h":8,"w":12,"x":12,"y":10},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "bytes", "custom": {"lineWidth": 2}},
@@ -77,7 +77,7 @@
       "title": "Disk Usage % (root)",
       "type": "timeseries",
       "gridPos": {"h":8,"w":12,"x":0,"y":19},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "percent", "min": 0, "max": 100, "custom": {"lineWidth": 2}},
@@ -96,7 +96,7 @@
       "title": "Disk I/O",
       "type": "timeseries",
       "gridPos": {"h":8,"w":12,"x":12,"y":19},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "Bps", "custom": {"lineWidth": 2}},
@@ -123,7 +123,7 @@
       "title": "Network Traffic",
       "type": "timeseries",
       "gridPos": {"h":8,"w":24,"x":0,"y":28},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"unit": "bps", "custom": {"lineWidth": 2}},
@@ -150,7 +150,7 @@
       "title": "System Load (1m)",
       "type": "timeseries",
       "gridPos": {"h":8,"w":12,"x":0,"y":37},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
       "fieldConfig": {
         "defaults": {"custom": {"lineWidth": 2}},
@@ -169,7 +169,7 @@
       "title": "Uptime",
       "type": "stat",
       "gridPos": {"h":8,"w":12,"x":12,"y":37},
-      "datasource": {"type":"prometheus","uid":"${datasource}"},
+      "datasource": {"type":"prometheus","uid":"prometheus"},
       "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "orientation": "auto", "textMode": "auto", "colorMode": "value"},
       "fieldConfig": {
         "defaults": {"unit": "s"},

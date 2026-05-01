@@ -78,7 +78,7 @@
         document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
       }).catch(()=>{});
   }
-  setInterval(refresh,30000);
+  setInterval(refresh,5000);
   refresh();
 })();
 </script>{% endblock %}
