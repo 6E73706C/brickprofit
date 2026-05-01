@@ -45,11 +45,11 @@ services:
     networks:
       - frontend_net
     deploy:
-      replicas: 2
+      mode: global
       update_config:
         parallelism: 1
         delay: 10s
-        order: start-first          # bring new container up BEFORE killing old
+        order: start-first
         failure_action: rollback
       rollback_config:
         parallelism: 1
