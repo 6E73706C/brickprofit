@@ -29,12 +29,16 @@ jobs:
             H=$(echo "$H_P" | cut -d' ' -f1)
             P=$(echo "$H_P" | cut -d' ' -f2)
             s "$H" "$P" "
-              # Remove outdated docker.io if installed; skip if Docker CE already present
+              export DEBIAN_FRONTEND=noninteractive
+              # Skip if Docker CE already installed
               if dpkg -l docker-ce >/dev/null 2>&1; then
                 echo 'Docker CE already installed, skipping.'
                 exit 0
               fi
-              apt-get remove -y docker.io docker-doc docker-compose podman-docker containerd runc 2>/dev/null || true
+              # Remove any conflicting packages
+              apt-get remove -y docker.io docker-doc docker-compose podman-docker \
+                containerd containerd.io runc 2>/dev/null || true
+              apt-get autoremove -y 2>/dev/null || true
               apt-get update -qq
               apt-get install -y ca-certificates curl git
               install -m 0755 -d /etc/apt/keyrings
@@ -44,7 +48,10 @@ jobs:
                 > /etc/apt/sources.list.d/docker.list
               apt-get update -qq
               apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
-              systemctl enable --now docker
+              systemctl enable docker
+              systemctl start docker
+              # Verify
+              docker info >/dev/null
             "
           done
 
@@ -202,7 +209,7 @@ jobs:
             sleep 20   # let swarm reschedule tasks off this node
 
             echo "▶  Updating OS on $HOST..."
-            s "$HOST" "$PASS" "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
+            s "$HOST" "$PASS" "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
 
             echo "▶  Rebooting $HOST..."
             s "$HOST" "$PASS" "reboot" || true   # reboot closes the SSH session — ignore exit code
