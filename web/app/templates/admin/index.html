@@ -1,27 +1,28 @@
 {% extends "admin/layout.html" %}
-{% block title %}Overview – Admin{% endblock %}
+{% block title %}Overview – BrickProfit Admin{% endblock %}
 {% block content %}
-<h5 class="mb-4 text-secondary fw-normal">Overview</h5>
-<div class="row g-3">
-  {% set icons = {'users':'people-fill','items':'box-seam-fill','proxies':'diagram-3-fill','golden_proxies':'trophy-fill','sessions':'key-fill'} %}
-  {% set links = {'users': url_for('admin.users'), 'items': url_for('admin.items'),
-                  'proxies': url_for('admin.proxies'), 'golden_proxies': url_for('admin.golden_proxies'), 'sessions': url_for('admin.sessions')} %}
-  {% set labels = {'users':'Users','items':'Items','proxies':'Fresh Proxies','golden_proxies':'Golden Proxies','sessions':'Sessions'} %}
-  {% set colors = {'users':'text-primary','items':'text-info','proxies':'text-primary','golden_proxies':'text-warning','sessions':'text-primary'} %}
+<div class="ph">
+  <div><p class="ph-title">Overview</p><p class="ph-sub">System summary</p></div>
+</div>
+{% set icons  = {'users':'people-fill','items':'box-seam-fill','proxies':'diagram-3-fill','golden_proxies':'trophy-fill','sessions':'key-fill'} %}
+{% set links  = {'users':url_for('admin.users'),'items':url_for('admin.items'),'proxies':url_for('admin.proxies'),'golden_proxies':url_for('admin.golden_proxies'),'sessions':url_for('admin.sessions')} %}
+{% set labels = {'users':'Users','items':'Items','proxies':'Fresh Proxies','golden_proxies':'Golden Proxies','sessions':'Sessions'} %}
+{% set colors = {'users':'b-blue','items':'b-blue','proxies':'b-blue','golden_proxies':'b-yellow','sessions':'b-blue'} %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1rem;">
   {% for table, count in counts.items() %}
-  <div class="col-6 col-lg-3">
-    <a href="{{ links[table] }}" class="text-decoration-none">
-      <div class="card p-3 h-100">
-        <div class="d-flex align-items-center gap-3">
-          <i class="bi bi-{{ icons[table] }} fs-4 {{ colors[table] }}"></i>
-          <div>
-            <div class="fs-4 fw-semibold">{{ count }}</div>
-            <div class="text-secondary small">{{ labels[table] }}</div>
-          </div>
+  <a href="{{ links[table] }}" style="text-decoration:none;">
+    <div class="bp-card" style="padding:1.25rem 1rem;">
+      <div style="display:flex;align-items:center;gap:.75rem;">
+        <span class="badge {{ colors[table] }}" style="padding:.5rem;font-size:1.1rem;border-radius:8px;">
+          <i class="bi bi-{{ icons[table] }}"></i>
+        </span>
+        <div>
+          <div style="font-size:1.6rem;font-weight:700;line-height:1;color:var(--text);">{{ count }}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem;">{{ labels[table] }}</div>
         </div>
       </div>
-    </a>
-  </div>
+    </div>
+  </a>
   {% endfor %}
 </div>
 {% endblock %}

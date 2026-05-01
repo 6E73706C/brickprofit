@@ -2,43 +2,40 @@
 {% block title %}Golden Proxies – Admin{% endblock %}
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0">
-    <i class="bi bi-trophy-fill text-warning me-2"></i>
-    Golden Proxies <span class="text-white fw-semibold">{{ total }}</span>
-    <small class="text-muted ms-2 fs-6 fw-normal">tested &amp; verified working</small>
-  </h5>
-  <form class="d-flex gap-2" method="get">
-    <select name="protocol" class="form-select form-select-sm"
-            style="background:#161b22;border-color:#30363d;color:#e0e0e0;width:auto;">
+<div class="ph">
+  <div>
+    <p class="ph-title"><i class="bi bi-trophy-fill" style="color:#fbbf24;margin-right:.4rem;"></i>Golden Proxies</p>
+    <p class="ph-sub">{{ total }} verified working proxies</p>
+  </div>
+  <form style="display:flex;gap:.5rem;align-items:center;" method="get">
+    <select name="protocol" class="bp-select">
       {% for p in protocols %}
-        <option value="{{ p }}" {% if p == protocol %}selected{% endif %}>
-          {{ p if p else 'All protocols' }}
-        </option>
+        <option value="{{ p }}" {% if p == protocol %}selected{% endif %}>{{ p if p else 'All protocols' }}</option>
       {% endfor %}
     </select>
-    <button class="btn btn-sm btn-outline-warning" type="submit">Filter</button>
+    <button class="bp-btn" type="submit"><i class="bi bi-funnel-fill"></i> Filter</button>
   </form>
 </div>
-<div class="card">
-  <div class="table-responsive">
-    <table class="table table-striped table-hover mb-0">
-      <thead><tr>
-        <th>Protocol</th><th>IP</th><th>Port</th><th>Source</th>
-        <th>First seen</th><th>Last verified</th>
-      </tr></thead>
+<div class="bp-card">
+  <div style="overflow-x:auto;">
+    <table class="bp-tbl">
+      <thead><tr><th>Protocol</th><th>IP</th><th>Port</th><th>Source</th><th>First Seen</th><th>Last Verified</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
-          <td><span class="badge bg-warning text-dark">{{ r.protocol }}</span></td>
-          <td class="font-monospace">{{ r.ip }}</td>
+          <td>
+            {% if r.protocol == 'http' %}<span class="badge b-http">HTTP</span>
+            {% elif r.protocol == 'socks4' %}<span class="badge b-socks4">SOCKS4</span>
+            {% else %}<span class="badge b-socks5">SOCKS5</span>{% endif %}
+          </td>
+          <td><span class="mono">{{ r.ip }}</span></td>
           <td>{{ r.port }}</td>
-          <td class="small text-secondary">{{ r.source }}</td>
-          <td class="small text-secondary">{{ r.first_seen }}</td>
-          <td class="small text-secondary">{{ r.last_seen }}</td>
+          <td class="dim">{{ r.source }}</td>
+          <td class="dim">{{ r.first_seen }}</td>
+          <td class="dim">{{ r.last_seen }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-secondary py-4">No golden proxies yet – tester is running.</td></tr>
+        <tr><td colspan="6"><div class="bp-empty"><i class="bi bi-trophy"></i>No golden proxies yet — tester is running.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

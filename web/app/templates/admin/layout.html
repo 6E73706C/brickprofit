@@ -7,91 +7,138 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
-    body { background: #0f1117; color: #e0e0e0; }
-    .sidebar { min-height: 100vh; background: #161b22; border-right: 1px solid #30363d; }
-    .sidebar .nav-link { color: #8b949e; border-radius: 6px; }
-    .sidebar .nav-link:hover, .sidebar .nav-link.active { background: #21262d; color: #fff; }
-    .sidebar .brand { color: #58a6ff; font-weight: 700; font-size: 1.2rem; }
-    .main-content { background: #0f1117; }
-    .card { background: #161b22; border: 1px solid #30363d; }
-    .table { --bs-table-bg: transparent; --bs-table-color: #e0e0e0;
-             --bs-table-striped-bg: #1c2128; --bs-table-border-color: #30363d; }
-    .table thead th { border-color: #30363d; color: #8b949e; font-size: .75rem;
-                      text-transform: uppercase; letter-spacing: .05em; }
-    .badge-active { background: #1a7f37; }
-    .badge-inactive { background: #6e7681; }
-    a { color: #58a6ff; }
-    .pagination .page-link { background: #161b22; border-color: #30363d; color: #8b949e; }
-    .pagination .page-item.active .page-link { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    :root {
+      --bg:       #0f172a;
+      --surface:  #1e293b;
+      --surface2: #263248;
+      --border:   #334155;
+      --text:     #f1f5f9;
+      --muted:    #94a3b8;
+      --accent:   #818cf8;
+      --accent-bg:#1e1b4b;
+    }
+    body { background:var(--bg); color:var(--text); margin:0;
+           font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif; font-size:.9rem; }
+
+    /* sidebar */
+    .sidebar { width:230px; min-width:230px; min-height:100vh; background:#08101f;
+               border-right:1px solid var(--border); display:flex; flex-direction:column;
+               padding:1.25rem .75rem; position:sticky; top:0; height:100vh; overflow-y:auto; }
+    .brand { color:var(--accent); font-weight:700; font-size:1.05rem; letter-spacing:-.02em;
+             padding:.25rem .5rem 1.25rem; display:flex; align-items:center; gap:.5rem;
+             text-decoration:none; }
+    .nav-section { font-size:.62rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em;
+                   color:#475569; padding:.9rem .5rem .3rem; }
+    .snav { color:#cbd5e1; border-radius:7px; padding:.45rem .75rem; font-size:.85rem;
+            display:flex; align-items:center; gap:.6rem; transition:background .12s,color .12s;
+            text-decoration:none; margin-bottom:1px; }
+    .snav i { font-size:.95rem; opacity:.75; }
+    .snav:hover { background:var(--surface); color:var(--text); }
+    .snav:hover i { opacity:1; }
+    .snav.active { background:var(--accent-bg); color:var(--accent); font-weight:500; }
+    .snav.active i { opacity:1; }
+    .logout-lnk { color:#fca5a5; border-radius:7px; padding:.45rem .75rem; font-size:.85rem;
+                  display:flex; align-items:center; gap:.6rem; text-decoration:none;
+                  margin-top:auto; transition:background .12s; }
+    .logout-lnk:hover { background:rgba(248,113,113,.1); color:#f87171; }
+
+    /* main */
+    .main { flex:1; min-width:0; padding:2rem 2.5rem; background:var(--bg); }
+    .ph { display:flex; align-items:center; justify-content:space-between;
+          margin-bottom:1.5rem; padding-bottom:1rem; border-bottom:1px solid var(--border); }
+    .ph-title { font-size:1.15rem; font-weight:600; margin:0; }
+    .ph-sub { font-size:.78rem; color:var(--muted); margin-top:.1rem; }
+
+    /* card */
+    .bp-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+
+    /* table */
+    .bp-tbl { width:100%; border-collapse:collapse; }
+    .bp-tbl thead tr { border-bottom:1px solid var(--border); }
+    .bp-tbl thead th { padding:.65rem 1rem; font-size:.68rem; font-weight:600;
+                       text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+                       background:var(--surface); white-space:nowrap; }
+    .bp-tbl tbody tr { border-bottom:1px solid rgba(51,65,85,.5); transition:background .1s; }
+    .bp-tbl tbody tr:last-child { border-bottom:none; }
+    .bp-tbl tbody tr:hover { background:var(--surface2); }
+    .bp-tbl td { padding:.65rem 1rem; color:var(--text); vertical-align:middle; }
+    .mono { font-family:"SF Mono","Fira Code",monospace; font-size:.78rem; color:#a5b4fc; }
+    .dim { color:var(--muted); font-size:.8rem; }
+
+    /* badges */
+    .badge { display:inline-flex; align-items:center; padding:.2em .65em; border-radius:999px;
+             font-size:.68rem; font-weight:600; letter-spacing:.02em; }
+    .b-green  { background:rgba(74,222,128,.15);  color:#4ade80; }
+    .b-red    { background:rgba(248,113,113,.15); color:#f87171; }
+    .b-gray   { background:rgba(148,163,184,.12); color:#94a3b8; }
+    .b-blue   { background:rgba(129,140,248,.15); color:#a5b4fc; }
+    .b-yellow { background:rgba(251,191,36,.15);  color:#fbbf24; }
+    .b-http   { background:rgba(56,189,248,.12);  color:#38bdf8; }
+    .b-socks4 { background:rgba(167,139,250,.12); color:#a78bfa; }
+    .b-socks5 { background:rgba(251,146,60,.12);  color:#fb923c; }
+
+    /* form */
+    .bp-select { background:var(--surface); border:1px solid var(--border); color:var(--text);
+                 border-radius:6px; padding:.35rem .75rem; font-size:.82rem; outline:none; }
+    .bp-select:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(129,140,248,.2); }
+    .bp-btn { background:var(--surface); border:1px solid var(--border); color:var(--text);
+              border-radius:6px; padding:.35rem .85rem; font-size:.82rem; cursor:pointer;
+              transition:background .12s,border-color .12s; text-decoration:none;
+              display:inline-flex; align-items:center; gap:.35rem; }
+    .bp-btn:hover { background:var(--surface2); border-color:#475569; color:var(--text); }
+
+    /* alerts */
+    .bp-alert { padding:.75rem 1rem; border-radius:8px; margin-bottom:1rem;
+                font-size:.875rem; display:flex; align-items:flex-start; gap:.6rem; }
+    .bp-alert-danger  { background:rgba(248,113,113,.1); border:1px solid rgba(248,113,113,.3); color:#fca5a5; }
+    .bp-alert-success { background:rgba(74,222,128,.1);  border:1px solid rgba(74,222,128,.3);  color:#86efac; }
+    .bp-alert-warning { background:rgba(251,191,36,.1);  border:1px solid rgba(251,191,36,.3);  color:#fde68a; }
+    .bp-alert-info    { background:rgba(129,140,248,.1); border:1px solid rgba(129,140,248,.3); color:#c4b5fd; }
+
+    /* pagination */
+    .bp-page { display:flex; justify-content:flex-end; align-items:center; gap:.5rem; margin-top:1rem; }
+
+    /* empty */
+    .bp-empty { padding:3rem 1rem; text-align:center; color:var(--muted); }
+    .bp-empty i { font-size:2.5rem; opacity:.25; display:block; margin-bottom:.75rem; }
+
+    code { background:rgba(129,140,248,.1); color:#a5b4fc; border-radius:4px; padding:.1em .4em; font-size:.82em; }
   </style>
 </head>
 <body>
-<div class="d-flex">
-  <!-- Sidebar -->
-  <nav class="sidebar d-flex flex-column p-3" style="width:220px;min-width:220px;">
-    <a class="brand mb-4 text-decoration-none d-flex align-items-center gap-2" href="{{ url_for('admin.index') }}">
-      <i class="bi bi-shield-lock-fill"></i> Admin
+<div style="display:flex;min-height:100vh;">
+  <nav class="sidebar">
+    <a class="brand" href="{{ url_for('admin.index') }}">
+      <i class="bi bi-shield-lock-fill"></i> BrickProfit
     </a>
-    <ul class="nav flex-column gap-1 flex-grow-1">
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.index' %}active{% endif %}"
-           href="{{ url_for('admin.index') }}">
-          <i class="bi bi-grid-fill me-2"></i>Overview
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.users' %}active{% endif %}"
-           href="{{ url_for('admin.users') }}">
-          <i class="bi bi-people-fill me-2"></i>Users
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.items' %}active{% endif %}"
-           href="{{ url_for('admin.items') }}">
-          <i class="bi bi-box-seam-fill me-2"></i>Items
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.proxies' %}active{% endif %}"
-           href="{{ url_for('admin.proxies') }}">
-          <i class="bi bi-diagram-3-fill me-2"></i>Fresh Proxies
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.golden_proxies' %}active{% endif %}"
-           href="{{ url_for('admin.golden_proxies') }}">
-          <i class="bi bi-trophy-fill me-2"></i>Golden Proxies
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.sessions' %}active{% endif %}"
-           href="{{ url_for('admin.sessions') }}">
-          <i class="bi bi-key-fill me-2"></i>Sessions
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'admin.containers' %}active{% endif %}"
-           href="{{ url_for('admin.containers') }}">
-          <i class="bi bi-boxes me-2"></i>Containers
-        </a>
-      </li>
-    </ul>
-    <a class="nav-link mt-auto text-danger" href="{{ url_for('auth.logout') }}">
-      <i class="bi bi-box-arrow-right me-2"></i>Logout
-    </a>
+
+    <div class="nav-section">Main</div>
+    <a class="snav {% if request.endpoint=='admin.index' %}active{% endif %}" href="{{ url_for('admin.index') }}"><i class="bi bi-grid-fill"></i> Overview</a>
+    <a class="snav {% if request.endpoint=='admin.users' %}active{% endif %}" href="{{ url_for('admin.users') }}"><i class="bi bi-people-fill"></i> Users</a>
+    <a class="snav {% if request.endpoint=='admin.items' %}active{% endif %}" href="{{ url_for('admin.items') }}"><i class="bi bi-box-seam-fill"></i> Items</a>
+
+    <div class="nav-section">Proxies</div>
+    <a class="snav {% if request.endpoint=='admin.proxies' %}active{% endif %}" href="{{ url_for('admin.proxies') }}"><i class="bi bi-diagram-3-fill"></i> Fresh Proxies</a>
+    <a class="snav {% if request.endpoint=='admin.golden_proxies' %}active{% endif %}" href="{{ url_for('admin.golden_proxies') }}"><i class="bi bi-trophy-fill"></i> Golden Proxies</a>
+
+    <div class="nav-section">System</div>
+    <a class="snav {% if request.endpoint=='admin.sessions' %}active{% endif %}" href="{{ url_for('admin.sessions') }}"><i class="bi bi-key-fill"></i> Sessions</a>
+    <a class="snav {% if request.endpoint=='admin.containers' %}active{% endif %}" href="{{ url_for('admin.containers') }}"><i class="bi bi-boxes"></i> Containers</a>
+
+    <a class="logout-lnk" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a>
   </nav>
 
-  <!-- Main -->
-  <div class="main-content flex-grow-1 p-4">
+  <main class="main">
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in msgs %}
-        <div class="alert alert-{{ cat }} alert-dismissible fade show" role="alert">
-          {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="bp-alert bp-alert-{{ cat }}">
+          <i class="bi bi-{% if cat=='danger' %}exclamation-circle-fill{% elif cat=='success' %}check-circle-fill{% elif cat=='warning' %}exclamation-triangle-fill{% else %}info-circle-fill{% endif %}"></i>
+          {{ msg }}
         </div>
       {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}
-  </div>
+  </main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>

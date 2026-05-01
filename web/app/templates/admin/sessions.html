@@ -2,26 +2,22 @@
 {% block title %}Sessions – Admin{% endblock %}
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0 text-secondary fw-normal">Sessions <span class="text-white fw-semibold">{{ total }}</span></h5>
+<div class="ph">
+  <div><p class="ph-title">Sessions</p><p class="ph-sub">{{ total }} active session tokens</p></div>
 </div>
-<div class="card">
-  <div class="table-responsive">
-    <table class="table table-striped table-hover mb-0">
-      <thead><tr>
-        <th>Token</th><th>User ID</th><th>Expires at</th>
-      </tr></thead>
+<div class="bp-card">
+  <div style="overflow-x:auto;">
+    <table class="bp-tbl">
+      <thead><tr><th>Token</th><th>User ID</th><th>Expires At</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
-          <td class="font-monospace small text-secondary" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            {{ r.token }}
-          </td>
-          <td class="font-monospace small text-secondary">{{ r.user_id }}</td>
-          <td class="small text-secondary">{{ r.expires_at }}</td>
+          <td><span class="mono">{{ r.token }}</span></td>
+          <td><span class="mono">{{ r.user_id }}</span></td>
+          <td class="dim">{{ r.expires_at }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3" class="text-center text-secondary py-4">No records.</td></tr>
+        <tr><td colspan="3"><div class="bp-empty"><i class="bi bi-key"></i>No sessions found.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

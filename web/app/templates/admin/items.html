@@ -2,26 +2,24 @@
 {% block title %}Items – Admin{% endblock %}
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0 text-secondary fw-normal">Items <span class="text-white fw-semibold">{{ total }}</span></h5>
+<div class="ph">
+  <div><p class="ph-title">Items</p><p class="ph-sub">{{ total }} total records</p></div>
 </div>
-<div class="card">
-  <div class="table-responsive">
-    <table class="table table-striped table-hover mb-0">
-      <thead><tr>
-        <th>ID</th><th>Name</th><th>Description</th><th>Owner</th><th>Created</th>
-      </tr></thead>
+<div class="bp-card">
+  <div style="overflow-x:auto;">
+    <table class="bp-tbl">
+      <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Owner</th><th>Created</th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
-          <td class="font-monospace small text-secondary">{{ r.id }}</td>
+          <td><span class="mono">{{ r.id }}</span></td>
           <td>{{ r.name }}</td>
-          <td class="text-secondary small">{{ r.description or '–' }}</td>
-          <td class="font-monospace small text-secondary">{{ r.owner_id }}</td>
-          <td class="small text-secondary">{{ r.created_at }}</td>
+          <td class="dim">{{ r.description }}</td>
+          <td><span class="mono">{{ r.owner_id }}</span></td>
+          <td class="dim">{{ r.created_at }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center text-secondary py-4">No records.</td></tr>
+        <tr><td colspan="5"><div class="bp-empty"><i class="bi bi-box-seam"></i>No items found.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

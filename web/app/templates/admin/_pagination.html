@@ -1,17 +1,13 @@
 {% if total_pages > 1 %}
-<nav class="mt-3 d-flex gap-2 align-items-center justify-content-end small text-secondary">
-  <span>Page {{ page }} / {{ total_pages }}</span>
+{% set base = request.path ~ '?' %}
+{% for k,v in request.args.items() %}{% if k != 'page' %}{% set base = base ~ k ~ '=' ~ v ~ '&' %}{% endif %}{% endfor %}
+<div class="bp-page">
+  <span style="color:var(--muted);font-size:.8rem;">Page {{ page }} of {{ total_pages }} &nbsp;·&nbsp; {{ total }} total</span>
   {% if page > 1 %}
-    <a class="btn btn-sm btn-outline-secondary"
-       href="{{ request.path }}?{% for k,v in request.args.items() %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ page - 1 }}">
-      &laquo; Prev
-    </a>
+    <a class="bp-btn" href="{{ base }}page={{ page - 1 }}"><i class="bi bi-chevron-left"></i> Prev</a>
   {% endif %}
   {% if page < total_pages %}
-    <a class="btn btn-sm btn-outline-secondary"
-       href="{{ request.path }}?{% for k,v in request.args.items() %}{% if k != 'page' %}{{ k }}={{ v }}&{% endif %}{% endfor %}page={{ page + 1 }}">
-      Next &raquo;
-    </a>
+    <a class="bp-btn" href="{{ base }}page={{ page + 1 }}">Next <i class="bi bi-chevron-right"></i></a>
   {% endif %}
-</nav>
+</div>
 {% endif %}

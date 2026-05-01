@@ -1,50 +1,31 @@
 {% extends "admin/layout.html" %}
-{% block title %}Containers – BrickProfit Admin{% endblock %}
+{% block title %}Containers – Admin{% endblock %}
 {% block content %}
-<div class="d-flex align-items-center justify-content-between mb-4">
+<div class="ph">
   <div>
-    <h4 class="mb-0">Running Containers</h4>
-    <small class="text-muted">Node: <code>{{ hostname }}</code> &mdash; {{ rows|length }} container(s) running</small>
+    <p class="ph-title">Containers</p>
+    <p class="ph-sub">Node: <code>{{ hostname }}</code> &mdash; {{ rows|length }} running</p>
   </div>
-  <a href="{{ url_for('admin.containers') }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-  </a>
+  <a class="bp-btn" href="{{ url_for('admin.containers') }}"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
 </div>
-
 {% if error %}
-  <div class="alert alert-danger">
-    <i class="bi bi-exclamation-triangle-fill me-2"></i>
-    Could not connect to Docker socket: <code>{{ error }}</code>
-  </div>
+  <div class="bp-alert bp-alert-danger"><i class="bi bi-exclamation-circle-fill"></i> Docker socket error: <code>{{ error }}</code></div>
 {% elif not rows %}
-  <div class="alert alert-secondary">No running containers found on this node.</div>
+  <div class="bp-alert bp-alert-info"><i class="bi bi-info-circle-fill"></i> No running containers found on this node.</div>
 {% else %}
-<div class="card">
-  <div class="table-responsive">
-    <table class="table table-striped table-hover mb-0 align-middle">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Name</th>
-          <th>Image</th>
-          <th>Status</th>
-          <th>Created</th>
-          <th>Ports</th>
-        </tr>
-      </thead>
+<div class="bp-card">
+  <div style="overflow-x:auto;">
+    <table class="bp-tbl">
+      <thead><tr><th>ID</th><th>Name</th><th>Image</th><th>Status</th><th>Created</th><th>Ports</th></tr></thead>
       <tbody>
         {% for c in rows %}
         <tr>
-          <td><code class="text-muted" style="font-size:.8rem">{{ c.id }}</code></td>
+          <td><span class="mono">{{ c.id }}</span></td>
           <td>{{ c.name }}</td>
-          <td><span class="text-info" style="font-size:.85rem">{{ c.image }}</span></td>
-          <td>
-            <span class="badge rounded-pill {% if c.status == 'running' %}badge-active{% else %}badge-inactive{% endif %}">
-              {{ c.status }}
-            </span>
-          </td>
-          <td><small class="text-muted">{{ c.created }}</small></td>
-          <td><small>{{ c.ports }}</small></td>
+          <td class="dim">{{ c.image }}</td>
+          <td><span class="badge {% if c.status == 'running' %}b-green{% else %}b-gray{% endif %}">{{ c.status }}</span></td>
+          <td class="dim">{{ c.created }}</td>
+          <td><span class="mono" style="font-size:.75rem;">{{ c.ports }}</span></td>
         </tr>
         {% endfor %}
       </tbody>
