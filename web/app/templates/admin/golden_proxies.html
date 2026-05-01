@@ -2,6 +2,11 @@
 {% block title %}Golden Proxies – Admin{% endblock %}
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
+{% if error %}
+<div style="background:#7f1d1d;color:#fca5a5;border:1px solid #b91c1c;border-radius:.5rem;padding:1rem 1.25rem;margin-bottom:1rem;">
+  <strong>Error loading golden proxies:</strong> {{ error }}
+</div>
+{% endif %}
 <div class="ph">
   <div>
     <p class="ph-title"><i class="bi bi-trophy-fill" style="color:#fbbf24;margin-right:.4rem;"></i>Golden Proxies</p>

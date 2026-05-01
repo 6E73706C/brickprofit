@@ -104,21 +104,25 @@ def containers():
         raw = client.containers.list(all=False)  # running only
         rows = []
         for c in raw:
-            ports = []
-            for container_port, bindings in (c.ports or {}).items():
-                if bindings:
-                    for b in bindings:
-                        ports.append(f"{b['HostPort']}→{container_port}")
-                else:
-                    ports.append(container_port)
-            rows.append({
-                "id": c.short_id,
-                "name": c.name,
-                "image": c.image.tags[0] if c.image.tags else c.image.short_id,
-                "status": c.status,
-                "created": c.attrs.get("Created", "")[:19].replace("T", " "),
-                "ports": ", ".join(ports) or "—",
-            })
+            try:
+                ports = []
+                for container_port, bindings in (c.ports or {}).items():
+                    if bindings:
+                        for b in bindings:
+                            ports.append(f"{b['HostPort']}→{container_port}")
+                    else:
+                        ports.append(container_port)
+                image_name = (c.attrs.get("Config") or {}).get("Image") or c.short_id
+                rows.append({
+                    "id": c.short_id,
+                    "name": c.name,
+                    "image": image_name,
+                    "status": c.status,
+                    "created": c.attrs.get("Created", "")[:19].replace("T", " "),
+                    "ports": ", ".join(ports) or "—",
+                })
+            except Exception:
+                pass
         error = None
     except Exception as exc:
         rows = []
@@ -134,16 +138,20 @@ def golden_proxies():
     session = get_session()
     page = _page()
     protocol = request.args.get("protocol", "")
-    if protocol:
-        rows = session.execute(
-            "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies WHERE protocol = %s",
-            (protocol,),
-        )
-    else:
-        rows = session.execute(
-            "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies"
-        )
-    data, total = _paginate(rows, page)
+    try:
+        if protocol:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies WHERE protocol = %s",
+                (protocol,),
+            )
+        else:
+            rows = session.execute(
+                "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies"
+            )
+        data, total = _paginate(rows, page)
+        error = None
+    except Exception as exc:
+        data, total, error = [], 0, str(exc)
     return render_template(
         "admin/golden_proxies.html",
         rows=data,
@@ -152,6 +160,7 @@ def golden_proxies():
         page_size=PAGE_SIZE,
         protocol=protocol,
         protocols=["", "http", "socks4", "socks5"],
+        error=error,
     )
 
 
