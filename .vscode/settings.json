@@ -4,5 +4,8 @@
       "monitoring/prometheus/prometheus.yml"
     ]
   },
-  "yaml.schemaStore.enable": false
+  "yaml.schemaStore.enable": false,
+  "hadolint.hadolintPath": "hadolint",
+  "hadolint.configFile": "${workspaceFolder}/.hadolint.yaml",
+  "docker.languageserver.enabled": false
 }
