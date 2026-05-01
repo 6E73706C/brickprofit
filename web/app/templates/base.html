@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BrickProfit{% endblock %}</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+        header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
+        header h1 { font-size: 1.25rem; font-weight: 700; color: #7c6af7; }
+        nav a { color: #94a3b8; text-decoration: none; margin-left: 1.5rem; font-size: 0.9rem; }
+        nav a:hover { color: #e2e8f0; }
+        main { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        .card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; }
+        .card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 0.5rem; }
+        .card .value { font-size: 2rem; font-weight: 700; color: #7c6af7; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>BrickProfit</h1>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/admin/">Admin</a>
+        </nav>
+    </header>
+    <main>{% block content %}{% endblock %}</main>
+</body>
+</html>
