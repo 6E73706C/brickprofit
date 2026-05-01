@@ -170,18 +170,25 @@ jobs:
 
             # ── Init Cassandra schema (idempotent – IF NOT EXISTS guards) ──────
             echo "Waiting for cassandra1 to be ready..."
+            CASS_READY=0
             for i in $(seq 1 30); do
               CONTAINER=$(docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}' | head -1)
               if [ -n "$CONTAINER" ]; then
                 if docker exec "$CONTAINER" cqlsh -u cassandra -p cassandra -e "DESCRIBE KEYSPACES" >/dev/null 2>&1; then
-                  echo "Cassandra is ready, running init.cql..."
-                  docker exec -i "$CONTAINER" cqlsh -u cassandra -p cassandra \
-                    < /opt/brickprofit/cassandra/init.cql && echo "Schema initialised." && break
+                  CASS_READY=1
+                  break
                 fi
               fi
               echo "  attempt $i/30 – not ready yet, waiting 10s..."
               sleep 10
             done
+            if [ "$CASS_READY" = "1" ]; then
+              echo "Cassandra ready – running init.cql..."
+              docker exec -i "$CONTAINER" cqlsh -u cassandra -p cassandra \
+                < /opt/brickprofit/cassandra/init.cql && echo "Schema initialised." || echo "Schema init had errors (may already exist – continuing)"
+            else
+              echo "WARNING: Cassandra did not become ready in time – skipping schema init"
+            fi
 
   # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
   rolling-reboot:
