@@ -94,6 +94,7 @@ jobs:
                 ufw allow from \$NODE_IP to any port 7946 proto tcp comment 'Swarm node comm TCP'
                 ufw allow from \$NODE_IP to any port 7946 proto udp comment 'Swarm node comm UDP'
                 ufw allow from \$NODE_IP to any port 4789 proto udp comment 'Swarm overlay VXLAN'
+                ufw allow from \$NODE_IP to any port 9100 proto tcp comment 'node_exporter (Prometheus scrape)'
               done
 
               ufw --force enable

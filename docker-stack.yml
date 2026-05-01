@@ -17,6 +17,9 @@ networks:
   monitoring_net:
     driver: overlay
     attachable: true
+  host:
+    external: true
+    name: host
 
 volumes:
   cassandra_data_1:
@@ -304,8 +307,10 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+    # Use host network so node_exporter listens on the real server IP (port 9100).
+    # Prometheus scrapes it via the physical IPs, giving proper per-node labelling.
     networks:
-      - monitoring_net
+      - host
     deploy:
       mode: global
       restart_policy:
