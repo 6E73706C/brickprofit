@@ -148,6 +148,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
+            mkdir -p /opt/brickprofit/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -169,6 +170,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
+            mkdir -p /opt/brickprofit/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -190,6 +192,7 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
+            mkdir -p /opt/brickprofit/lego-images
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}

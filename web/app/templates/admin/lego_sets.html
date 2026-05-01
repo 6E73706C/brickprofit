@@ -37,12 +37,13 @@
       </thead>
       <tbody id="lego-tbody">
         {% for r in rows %}
-        {% set large_url = r.image_url | replace('/ItemImage/ST/', '/ItemImage/SL/') | replace('.t1.png', '.png') if r.image_url else '' %}
         <tr>
           <td>
             {% if r.image_url %}
-            <img src="{{ r.image_url }}" alt="{{ r.item_no }}"
-                 data-large="{{ large_url }}"
+            <img src="/admin/media/lego/{{ r.item_no }}.png"
+                 onerror="this.onerror=null;this.src='{{ r.image_url }}'"
+                 alt="{{ r.item_no }}"
+                 data-large="/admin/media/lego/{{ r.item_no }}.png"
                  data-name="{{ r.description or r.item_no }}"
                  title="Click for full size"
                  data-bs-toggle="modal" data-bs-target="#legoImgModal"
@@ -108,10 +109,6 @@ document.getElementById('legoImgModal').addEventListener('hidden.bs.modal', func
 (function(){
   const yr='{{ year_filter }}';
   const pg={{ page }};
-  function largeUrl(thumb){
-    if(!thumb) return '';
-    return thumb.replace('/ItemImage/ST/','/ItemImage/SL/').replace('.t1.png','.png');
-  }
   function refresh(){
     fetch('/admin/api/lego-sets?year='+yr+'&page='+pg)
       .then(r=>r.json()).then(d=>{
@@ -123,11 +120,12 @@ document.getElementById('legoImgModal').addEventListener('hidden.bs.modal', func
           tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-boxes"></i>No LEGO sets yet &mdash; scraper is running.</div></td></tr>';
         } else {
           tb.innerHTML=d.rows.map(r=>{
-            const thumb=r.image_url||'';
-            const large=largeUrl(thumb);
-            const name=(r.description||r.item_no).replace(/"/g,'&quot;');
-            const img=thumb
-              ? `<img src="${thumb}" alt="${r.item_no}" data-large="${large}" data-name="${name}" title="Click for full size" data-bs-toggle="modal" data-bs-target="#legoImgModal" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
+            const item_no=r.item_no||'';
+            const fallback=r.image_url||'';
+            const localSrc=item_no ? `/admin/media/lego/${item_no}.png` : fallback;
+            const name=(r.description||item_no).replace(/"/g,'&quot;');
+            const img=fallback || item_no
+              ? `<img src="${localSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${item_no}" data-large="${localSrc}" data-name="${name}" title="Click for full size" data-bs-toggle="modal" data-bs-target="#legoImgModal" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
               : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>';
             return `<tr>
               <td>${img}</td>

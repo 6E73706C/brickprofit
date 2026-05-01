@@ -43,6 +43,7 @@ CASSANDRA_PASSWORD = os.environ.get("CASSANDRA_PASSWORD", "cassandra")
 SCRAPE_INTERVAL    = int(os.environ.get("SCRAPE_INTERVAL_SECONDS", "3600"))   # 1 h between full cycles
 REQUEST_TIMEOUT    = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
 DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "3"))  # polite crawl delay
+IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
 
@@ -208,6 +209,36 @@ def has_next_page(html: str, current_pg: int) -> bool:
     return False
 
 
+# ── Image download ───────────────────────────────────────────────────────────
+def download_image(item: dict) -> None:
+    """Download the large image for a set to IMAGE_DIR if not already cached."""
+    large_url = item.get("large_image_url", "")
+    item_no   = item.get("item_no", "")
+    if not large_url or not item_no:
+        return
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
+    dest = os.path.join(IMAGE_DIR, safe_name)
+    if os.path.exists(dest):
+        return  # already downloaded
+    os.makedirs(IMAGE_DIR, exist_ok=True)
+    tmp = dest + ".tmp"
+    try:
+        resp = requests.get(large_url, headers=HEADERS, timeout=15, stream=True)
+        resp.raise_for_status()
+        with open(tmp, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+        os.replace(tmp, dest)
+        log.debug("Downloaded image for %s", item_no)
+    except Exception as exc:
+        log.warning("Failed to download image for %s: %s", item_no, exc)
+        if os.path.exists(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
 # ── Cassandra writes ──────────────────────────────────────────────────────────
 def prepare_statements(session):
     insert = session.prepare("""
@@ -264,6 +295,7 @@ def scrape_year(session, update_stmt, year: int) -> int:
         now = datetime.now(timezone.utc)
         for item in sets:
             upsert_set(session, None, update_stmt, year, item, now)
+            download_image(item)
             total += 1
 
         if not has_next_page(html, pg):

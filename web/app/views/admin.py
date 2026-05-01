@@ -1,9 +1,13 @@
-from flask import Blueprint, jsonify, render_template, request
+import os
+
+from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
 
 from app.db import get_session
 
 bp = Blueprint("admin", __name__)
+
+LEGO_IMAGES_DIR = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 
 PAGE_SIZE = 50
 
@@ -238,6 +242,14 @@ def golden_proxies():
         protocols=["", "http", "socks4", "socks5"],
         error=error,
     )
+
+
+# ── LEGO Set images ────────────────────────────────────────────────────────────
+@bp.get("/media/lego/<path:filename>")
+@login_required
+def lego_image(filename):
+    """Serve locally-cached LEGO set images from the shared volume."""
+    return send_from_directory(LEGO_IMAGES_DIR, filename)
 
 
 # ── LEGO Sets ─────────────────────────────────────────────────────────────────

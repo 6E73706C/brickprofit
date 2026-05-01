@@ -28,6 +28,12 @@ volumes:
   redis_data:
   grafana_data:
   prometheus_data:
+  lego_images:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/brickprofit/lego-images
 
 services:
 
@@ -124,8 +130,10 @@ services:
       - FLASK_ENV=production
       - ADMIN_USERNAME=${ADMIN_USERNAME}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - LEGO_IMAGES_DIR=/data/lego-images
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - lego_images:/data/lego-images:ro
     networks:
       - frontend_net
       - backend_net
@@ -258,6 +266,9 @@ services:
       - SCRAPE_INTERVAL_SECONDS=3600
       - REQUEST_TIMEOUT_SECONDS=30
       - DELAY_BETWEEN_PAGES_SECONDS=3
+      - LEGO_IMAGES_DIR=/data/lego-images
+    volumes:
+      - lego_images:/data/lego-images
     networks:
       - backend_net
     deploy:
