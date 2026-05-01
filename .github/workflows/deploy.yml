@@ -30,10 +30,13 @@ jobs:
             P=$(echo "$H_P" | cut -d' ' -f2)
             s "$H" "$P" "
               export DEBIAN_FRONTEND=noninteractive
-              # Skip if Docker CE already installed
+              # Skip full install if Docker CE already installed, but always ensure daemon is running
               if dpkg -l docker-ce >/dev/null 2>&1; then
-                echo 'Docker CE already installed, skipping.'
-                exit 0
+                echo 'Docker CE already installed, ensuring daemon is running...'
+                systemctl enable docker
+                systemctl start docker || true
+                docker info >/dev/null && exit 0
+                echo 'Daemon failed to start, reinstalling...'
               fi
               # Remove any conflicting packages
               apt-get remove -y docker.io docker-doc docker-compose podman-docker \
