@@ -41,9 +41,9 @@ jobs:
           done
 
           # ── Init swarm on NODE0 (skip if already active) ──
-          s "$N0_HOST" "$N0_PASS" \
-            "docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active \
-             || docker swarm init --advertise-addr $N0_HOST"
+          N0_STATE=$(s "$N0_HOST" "$N0_PASS" "docker info --format '{{.Swarm.LocalNodeState}}'")
+          [ "$N0_STATE" = "active" ] \
+            || s "$N0_HOST" "$N0_PASS" "docker swarm init --advertise-addr $N0_HOST"
 
           # ── Get manager join token from NODE0 ──
           TOKEN=$(s "$N0_HOST" "$N0_PASS" "docker swarm join-token manager -q")
@@ -135,3 +135,70 @@ jobs:
               --compose-file /opt/brickprofit/docker-stack.yml \
               --resolve-image never \
               brickprofit
+
+  # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
+  rolling-reboot:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Rolling update & reboot
+        env:
+          N0_HOST: ${{ vars.NODE0_HOST }}
+          N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
+          N1_HOST: ${{ vars.NODE1_HOST }}
+          N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
+          N2_HOST: ${{ vars.NODE2_HOST }}
+          N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          s()  { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
+          s0() { s "$N0_HOST" "$N0_PASS" "$1"; }   # helper: run on NODE0 (manager)
+
+          wait_online() {
+            local HOST="$1" PASS="$2"
+            echo "    Waiting for $HOST to come back online..."
+            for i in $(seq 1 40); do
+              sleep 15
+              sshpass -p "$PASS" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                root@"$HOST" "echo ok" >/dev/null 2>&1 && echo "    $HOST is back." && return 0 || true
+            done
+            echo "ERROR: $HOST did not come back within 10 minutes" >&2
+            return 1
+          }
+
+          # Reboot NODE1 and NODE2 first, then NODE0 (manager) last.
+          # Each iteration: drain → update → reboot → wait → re-activate → verify services.
+          NODES="$N1_HOST:$N1_PASS $N2_HOST:$N2_PASS $N0_HOST:$N0_PASS"
+
+          for NODE in $NODES; do
+            HOST="${NODE%%:*}"
+            PASS="${NODE##*:}"
+
+            # Get this node's swarm ID (queried from the manager)
+            NODE_ID=$(s0 "docker node ls --format '{{.ID}} {{.Hostname}}' \
+              | grep \$(sshpass -p '$PASS' ssh -o StrictHostKeyChecking=no root@'$HOST' hostname) \
+              | awk '{print \$1}'")
+
+            echo "▶  Draining $HOST ($NODE_ID)..."
+            s0 "docker node update --availability drain $NODE_ID"
+            sleep 20   # let swarm reschedule tasks off this node
+
+            echo "▶  Updating OS on $HOST..."
+            s "$HOST" "$PASS" "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y"
+
+            echo "▶  Rebooting $HOST..."
+            s "$HOST" "$PASS" "reboot" || true   # reboot closes the SSH session — ignore exit code
+
+            wait_online "$HOST" "$PASS"
+
+            echo "▶  Re-activating $HOST in swarm..."
+            s0 "docker node update --availability active $NODE_ID"
+            sleep 15   # give the node time to rejoin and start accepting tasks
+
+            echo "✔  $HOST done."
+          done
+
+          echo "✔  All nodes updated and back online."
