@@ -30,7 +30,7 @@ def _paginate(rows, page: int, size: int = PAGE_SIZE):
 def index():
     session = get_session()
     counts = {}
-    for table in ("users", "items", "proxies", "sessions"):
+    for table in ("users", "items", "proxies", "golden_proxies", "sessions"):
         try:
             row = session.execute(f"SELECT COUNT(*) FROM {table}").one()  # noqa: S608
             counts[table] = row[0]
@@ -65,7 +65,7 @@ def items():
     return render_template("admin/items.html", rows=data, page=page, total=total, page_size=PAGE_SIZE)
 
 
-# ── Proxies ───────────────────────────────────────────────────────────────────
+# ── Fresh Proxies ────────────────────────────────────────────────────────────
 @bp.get("/proxies")
 @login_required
 def proxies():
@@ -125,6 +125,34 @@ def containers():
         error = str(exc)
     hostname = _socket.gethostname()
     return render_template("admin/containers.html", rows=rows, error=error, hostname=hostname)
+
+
+# ── Golden Proxies ───────────────────────────────────────────────────────────
+@bp.get("/golden-proxies")
+@login_required
+def golden_proxies():
+    session = get_session()
+    page = _page()
+    protocol = request.args.get("protocol", "")
+    if protocol:
+        rows = session.execute(
+            "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies WHERE protocol = %s",
+            (protocol,),
+        )
+    else:
+        rows = session.execute(
+            "SELECT protocol, ip, port, source, first_seen, last_seen FROM golden_proxies"
+        )
+    data, total = _paginate(rows, page)
+    return render_template(
+        "admin/golden_proxies.html",
+        rows=data,
+        page=page,
+        total=total,
+        page_size=PAGE_SIZE,
+        protocol=protocol,
+        protocols=["", "http", "socks4", "socks5"],
+    )
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

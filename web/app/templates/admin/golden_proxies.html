@@ -1,9 +1,13 @@
 {% extends "admin/layout.html" %}
-{% block title %}Fresh Proxies – Admin{% endblock %}
+{% block title %}Golden Proxies – Admin{% endblock %}
 {% block content %}
 {% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0 text-secondary fw-normal">Fresh Proxies <span class="text-white fw-semibold">{{ total }}</span></h5>
+  <h5 class="mb-0">
+    <i class="bi bi-trophy-fill text-warning me-2"></i>
+    Golden Proxies <span class="text-white fw-semibold">{{ total }}</span>
+    <small class="text-muted ms-2 fs-6 fw-normal">tested &amp; verified working</small>
+  </h5>
   <form class="d-flex gap-2" method="get">
     <select name="protocol" class="form-select form-select-sm"
             style="background:#161b22;border-color:#30363d;color:#e0e0e0;width:auto;">
@@ -13,35 +17,28 @@
         </option>
       {% endfor %}
     </select>
-    <button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
+    <button class="btn btn-sm btn-outline-warning" type="submit">Filter</button>
   </form>
 </div>
 <div class="card">
   <div class="table-responsive">
     <table class="table table-striped table-hover mb-0">
       <thead><tr>
-        <th>Protocol</th><th>IP</th><th>Port</th><th>Source</th><th>Active</th>
-        <th>First seen</th><th>Last seen</th>
+        <th>Protocol</th><th>IP</th><th>Port</th><th>Source</th>
+        <th>First seen</th><th>Last verified</th>
       </tr></thead>
       <tbody>
         {% for r in rows %}
         <tr>
-          <td><span class="badge bg-secondary">{{ r.protocol }}</span></td>
+          <td><span class="badge bg-warning text-dark">{{ r.protocol }}</span></td>
           <td class="font-monospace">{{ r.ip }}</td>
           <td>{{ r.port }}</td>
           <td class="small text-secondary">{{ r.source }}</td>
-          <td>
-            {% if r.is_active %}
-              <span class="badge badge-active">Yes</span>
-            {% else %}
-              <span class="badge badge-inactive">No</span>
-            {% endif %}
-          </td>
           <td class="small text-secondary">{{ r.first_seen }}</td>
           <td class="small text-secondary">{{ r.last_seen }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center text-secondary py-4">No records.</td></tr>
+        <tr><td colspan="6" class="text-center text-secondary py-4">No golden proxies yet – tester is running.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -64,6 +64,20 @@ CREATE TABLE IF NOT EXISTS proxies (
     PRIMARY KEY (protocol, ip, port)
 );
 
+-- ─── Golden Proxies ────────────────────────────────────────────────────────────
+-- Verified working proxies promoted from `proxies` by the proxy-tester service.
+CREATE TABLE IF NOT EXISTS golden_proxies (
+    protocol   TEXT,
+    ip         TEXT,
+    port       INT,
+    id         UUID,
+    source     TEXT,
+    first_seen TIMESTAMP,
+    last_seen  TIMESTAMP,
+    is_active  BOOLEAN,
+    PRIMARY KEY (protocol, ip, port)
+);
+
 -- ─── Sessions / tokens ───────────────────────────────────────────────────────
 -- "token" is a reserved CQL keyword – must be double-quoted
 CREATE TABLE IF NOT EXISTS sessions (

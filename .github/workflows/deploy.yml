@@ -153,6 +153,7 @@ jobs:
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
+            docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
 
   build-node1:
     runs-on: ubuntu-latest
@@ -172,6 +173,7 @@ jobs:
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
+            docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
 
   build-node2:
     runs-on: ubuntu-latest
@@ -191,6 +193,7 @@ jobs:
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
+            docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
 
   # ── Step 3: Deploy stack from manager ──────────────────────────────────────
   deploy:
@@ -213,7 +216,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -234,7 +237,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -253,7 +256,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 

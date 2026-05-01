@@ -219,6 +219,32 @@ services:
         limits:
           cpus: "0.5"
           memory: 128M
+
+  # ── Proxy Tester (tests proxies, promotes to golden_proxies) ─────────────
+  proxy-tester:
+    image: brickprofit-proxy-tester:latest
+    build:
+      context: ./proxy-tester
+    environment:
+      - CASSANDRA_HOSTS=["cassandra1","cassandra2","cassandra3"]
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - TEST_INTERVAL_SECONDS=1800
+      - TEST_TIMEOUT_SECONDS=12
+      - TEST_MAX_WORKERS=150
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 30s
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
   # ── Redis  (cache + Celery broker) ────────────────────────────────────────
   redis:
     image: redis:7-alpine
