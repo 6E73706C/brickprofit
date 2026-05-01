@@ -151,6 +151,7 @@ jobs:
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
+            docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
 
   build-node1:
     runs-on: ubuntu-latest
@@ -168,6 +169,7 @@ jobs:
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
+            docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
 
   build-node2:
     runs-on: ubuntu-latest
@@ -185,6 +187,7 @@ jobs:
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
             done
+            docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
 
   # ── Step 3: Deploy stack from manager ──────────────────────────────────────
   deploy:
@@ -213,7 +216,7 @@ jobs:
               brickprofit
             # Force-update all locally-built services so new image content is always used
             # --detach=true: don't block waiting for convergence (avoids hanging on crash loops)
-            for SVC in nginx api web worker beat; do
+            for SVC in nginx api web worker beat proxy-fetcher; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
             # Force-update monitoring services so provisioning config changes are picked up

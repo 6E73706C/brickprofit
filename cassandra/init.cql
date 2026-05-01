@@ -50,6 +50,20 @@ CREATE TABLE IF NOT EXISTS items_by_owner (
     PRIMARY KEY (owner_id, created_at, id)
 ) WITH CLUSTERING ORDER BY (created_at DESC);
 
+-- ─── Proxies ─────────────────────────────────────────────────────────────────
+-- Partition by protocol so queries like "give me 100 HTTP proxies" are fast.
+CREATE TABLE IF NOT EXISTS proxies (
+    protocol   TEXT,
+    ip         TEXT,
+    port       INT,
+    id         UUID,
+    source     TEXT,
+    first_seen TIMESTAMP,
+    last_seen  TIMESTAMP,
+    is_active  BOOLEAN,
+    PRIMARY KEY (protocol, ip, port)
+);
+
 -- ─── Sessions / tokens ───────────────────────────────────────────────────────
 -- "token" is a reserved CQL keyword – must be double-quoted
 CREATE TABLE IF NOT EXISTS sessions (
