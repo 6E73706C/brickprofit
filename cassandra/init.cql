@@ -4,7 +4,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Create application user (run as superuser)
-CREATE ROLE IF NOT EXISTS brickprofit WITH PASSWORD = 'changeme-cassandra' AND LOGIN = true;
+CREATE ROLE IF NOT EXISTS brickprofit WITH PASSWORD = 'pXxgsHRxfTQLPdRQn3VMFEZ5Y97qjFKW7UKjgNgXi7w' AND LOGIN = true;
 
 -- Keyspace: NetworkTopologyStrategy gives per-datacenter replication
 -- RF=3 means every row is stored on 3 nodes → survive 1 node failure

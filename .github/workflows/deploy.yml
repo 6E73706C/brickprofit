@@ -4,45 +4,134 @@ on:
   push:
     branches: [main]
 
-env:
-  REGISTRY: ${{ secrets.REGISTRY }}
-  TAG: ${{ github.sha }}
-
 jobs:
-  build-and-deploy:
+  # ── Step 1: Bootstrap infrastructure (idempotent) ──────────────────────────
+  setup-swarm:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
 
-      - name: Log in to registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USER }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Build & push images
+      - name: Bootstrap nodes
+        env:
+          N0_HOST: ${{ secrets.NODE0_HOST }}
+          N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
+          N1_HOST: ${{ secrets.NODE1_HOST }}
+          N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
+          N2_HOST: ${{ secrets.NODE2_HOST }}
+          N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
         run: |
-          for SVC in nginx api web worker; do
-            docker build \
-              --tag "${REGISTRY}/brickprofit-${SVC}:${TAG}" \
-              --tag "${REGISTRY}/brickprofit-${SVC}:latest" \
-              ./${SVC}
-            docker push "${REGISTRY}/brickprofit-${SVC}:${TAG}"
-            docker push "${REGISTRY}/brickprofit-${SVC}:latest"
+          set -euo pipefail
+          s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
+
+          # ── Install Docker & Git on all nodes (skip if already present) ──
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            s "$H" "$P" "which docker >/dev/null 2>&1 && which git >/dev/null 2>&1 \
+              || (apt-get update -qq && apt-get install -y docker.io git)"
           done
 
-      - name: Deploy to swarm
+          # ── Clone repo on all nodes (skip if already present) ──
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            s "$H" "$P" "[ -d /opt/brickprofit ] \
+              || git clone https://github.com/6E73706C/brickprofit.git /opt/brickprofit"
+          done
+
+          # ── Init swarm on NODE0 (skip if already active) ──
+          s "$N0_HOST" "$N0_PASS" \
+            "docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active \
+             || docker swarm init --advertise-addr $N0_HOST"
+
+          # ── Get manager join token from NODE0 ──
+          TOKEN=$(s "$N0_HOST" "$N0_PASS" "docker swarm join-token manager -q")
+
+          # ── Join NODE1 to swarm (skip if already active) ──
+          JOINED=$(s "$N1_HOST" "$N1_PASS" "docker info --format '{{.Swarm.LocalNodeState}}'")
+          [ "$JOINED" = "active" ] \
+            || s "$N1_HOST" "$N1_PASS" "docker swarm join --token $TOKEN $N0_HOST:2377"
+
+          # ── Join NODE2 to swarm (skip if already active) ──
+          JOINED=$(s "$N2_HOST" "$N2_PASS" "docker info --format '{{.Swarm.LocalNodeState}}'")
+          [ "$JOINED" = "active" ] \
+            || s "$N2_HOST" "$N2_PASS" "docker swarm join --token $TOKEN $N0_HOST:2377"
+
+          # ── Label nodes for Cassandra placement (|| true = already labelled is ok) ──
+          N0_ID=$(s "$N0_HOST" "$N0_PASS" "docker node inspect self --format '{{.ID}}'")
+          N1_ID=$(s "$N1_HOST" "$N1_PASS" "docker node inspect self --format '{{.ID}}'")
+          N2_ID=$(s "$N2_HOST" "$N2_PASS" "docker node inspect self --format '{{.ID}}'")
+
+          s "$N0_HOST" "$N0_PASS" "docker node update --label-add cassandra=node1 $N0_ID || true"
+          s "$N0_HOST" "$N0_PASS" "docker node update --label-add cassandra=node2 $N1_ID || true"
+          s "$N0_HOST" "$N0_PASS" "docker node update --label-add cassandra=node3 $N2_ID || true"
+
+  # ── Step 2: Build images on all nodes in parallel ──────────────────────────
+  build-node0:
+    runs-on: ubuntu-latest
+    needs: setup-swarm
+    steps:
+      - name: Build on NODE0
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SWARM_HOST }}
-          username: ${{ secrets.SWARM_USER }}
-          key: ${{ secrets.SWARM_SSH_KEY }}
+          host: ${{ secrets.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
           script: |
-            cd /opt/brickprofit
-            git pull origin main
-            REGISTRY=${{ secrets.REGISTRY }} TAG=${{ github.sha }} \
-              SERVICE="nginx api web worker" \
-              bash scripts/rolling-update.sh
+            set -euo pipefail
+            cd /opt/brickprofit && git pull origin main
+            for SVC in nginx api web worker; do
+              docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
+            done
+
+  build-node1:
+    runs-on: ubuntu-latest
+    needs: setup-swarm
+    steps:
+      - name: Build on NODE1
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.NODE1_HOST }}
+          username: root
+          password: ${{ secrets.NODE1_SSH_PASSWORD }}
+          script: |
+            set -euo pipefail
+            cd /opt/brickprofit && git pull origin main
+            for SVC in nginx api web worker; do
+              docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
+            done
+
+  build-node2:
+    runs-on: ubuntu-latest
+    needs: setup-swarm
+    steps:
+      - name: Build on NODE2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.NODE2_HOST }}
+          username: root
+          password: ${{ secrets.NODE2_SSH_PASSWORD }}
+          script: |
+            set -euo pipefail
+            cd /opt/brickprofit && git pull origin main
+            for SVC in nginx api web worker; do
+              docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
+            done
+
+  # ── Step 3: Deploy stack from manager ──────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-node0, build-node1, build-node2]
+    steps:
+      - name: Deploy stack from NODE0
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          script: |
+            docker stack deploy \
+              --compose-file /opt/brickprofit/docker-stack.yml \
+              --resolve-image never \
+              brickprofit

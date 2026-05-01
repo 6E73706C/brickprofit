@@ -6,19 +6,18 @@
 # The old container is only removed after the new one passes its healthcheck.
 #
 # Usage:
-#   TAG=v1.2.3 SERVICE=api ./scripts/rolling-update.sh
-#   TAG=v1.2.3 SERVICE="api web" ./scripts/rolling-update.sh
+#   SERVICE=api ./scripts/rolling-update.sh
+#   SERVICE="api web" ./scripts/rolling-update.sh
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "${ROOT}/.env"
 
-TAG="${TAG:-latest}"
 SERVICE="${SERVICE:-api}"
 
 for SVC in $SERVICE; do
-    IMAGE="${REGISTRY}/brickprofit-${SVC}:${TAG}"
+    IMAGE="brickprofit-${SVC}:latest"
     echo "▶  Rolling update: brickprofit_${SVC}  →  ${IMAGE}"
 
     docker service update \

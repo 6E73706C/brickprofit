@@ -30,7 +30,7 @@ services:
 
   # ── Reverse Proxy / SSL Termination ───────────────────────────────────────
   nginx:
-    image: ${REGISTRY}/brickprofit-nginx:${TAG:-latest}
+    image: brickprofit-nginx:latest
     build:
       context: ./nginx
     ports:
@@ -64,7 +64,7 @@ services:
 
   # ── FastAPI  (REST API / public endpoints) ────────────────────────────────
   api:
-    image: ${REGISTRY}/brickprofit-api:${TAG:-latest}
+    image: brickprofit-api:latest
     build:
       context: ./api
     environment:
@@ -108,7 +108,7 @@ services:
 
   # ── Flask  (admin dashboard / SSR pages) ─────────────────────────────────
   web:
-    image: ${REGISTRY}/brickprofit-web:${TAG:-latest}
+    image: brickprofit-web:latest
     build:
       context: ./web
     environment:
@@ -146,7 +146,7 @@ services:
 
   # ── Celery Worker  (async / background tasks) ─────────────────────────────
   worker:
-    image: ${REGISTRY}/brickprofit-worker:${TAG:-latest}
+    image: brickprofit-worker:latest
     build:
       context: ./worker
     environment:
@@ -176,7 +176,7 @@ services:
 
   # ── Celery Beat  (scheduler – single replica only!) ───────────────────────
   beat:
-    image: ${REGISTRY}/brickprofit-worker:${TAG:-latest}
+    image: brickprofit-worker:latest
     command: ["celery", "-A", "tasks", "beat", "--loglevel=info"]
     environment:
       - CASSANDRA_HOSTS=cassandra1,cassandra2,cassandra3
