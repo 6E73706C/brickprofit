@@ -42,7 +42,7 @@ CASSANDRA_PASSWORD = os.environ.get("CASSANDRA_PASSWORD", "cassandra")
 
 SCRAPE_INTERVAL    = int(os.environ.get("SCRAPE_INTERVAL_SECONDS", "3600"))   # 1 h between full cycles
 REQUEST_TIMEOUT    = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
-DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "3"))  # polite crawl delay
+DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5"))  # polite crawl delay
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
@@ -107,9 +107,10 @@ def drop_proxy(session, row) -> None:
 
 
 def fetch_with_proxy(url: str, session, *, params: dict | None = None,
-                     stream: bool = False, retries: int = 3) -> requests.Response:
+                     stream: bool = False, retries: int = 5) -> requests.Response:
     """
     GET *url* through a golden proxy.
+    Each attempt uses a freshly-picked proxy (rotates every try).
     On any failure the offending proxy is deleted from the DB and the next
     proxy is tried.  Raises RuntimeError if all retries fail or no proxies
     are left.  Never falls back to a direct connection.
@@ -133,7 +134,7 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
                         attempt, retries, proxy_row.ip, proxy_row.port, exc)
             drop_proxy(session, proxy_row)
             last_exc = exc
-            time.sleep(2)
+            time.sleep(3 * attempt)  # back-off: 3s, 6s, 9s …
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
@@ -227,14 +228,20 @@ def parse_sets(html: str) -> list[dict]:
     return results
 
 
-def has_next_page(html: str, current_pg: int) -> bool:
-    """Return True if there is a next page link on the catalog list page."""
+def get_total_pages(html: str) -> int:
+    """
+    Parse the highest page number from BrickLink's pagination links.
+    Returns 1 if no pagination is found (single page).
+    """
     soup = BeautifulSoup(html, "lxml")
-    # BrickLink uses "pg=N" links; look for a link to pg+1
-    next_pg = str(current_pg + 1)
-    for a in soup.find_all("a", href=re.compile(r"pg=" + re.escape(next_pg))):
-        return True
-    return False
+    max_pg = 1
+    for a in soup.find_all("a", href=re.compile(r"[?&]pg=(\d+)")):
+        m = re.search(r"[?&]pg=(\d+)", a.get("href", ""))
+        if m:
+            pg = int(m.group(1))
+            if pg > max_pg:
+                max_pg = pg
+    return max_pg
 
 
 # ── Image download ───────────────────────────────────────────────────────────
@@ -304,20 +311,28 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
 def scrape_year(session, update_stmt, year: int) -> int:
     """Scrape all pages for a given year. Returns number of sets processed."""
     total = 0
-    pg = 1
 
-    while True:
-        log.info("  Fetching year=%d page=%d …", year, pg)
-        html = fetch_page(year, pg, session)
-        if not html:
-            log.warning("  Failed to fetch year=%d page=%d – skipping.", year, pg)
-            break
+    # Fetch page 1 first to learn the total number of pages
+    log.info("  Fetching year=%d page=1 (discovering total pages) …", year)
+    html = fetch_page(year, 1, session)
+    if not html:
+        log.warning("  Failed to fetch year=%d page=1 – skipping year.", year)
+        return 0
+
+    total_pages = get_total_pages(html)
+    log.info("  year=%d → %d total pages", year, total_pages)
+
+    for pg in range(1, total_pages + 1):
+        if pg > 1:
+            log.info("  Fetching year=%d page=%d/%d …", year, pg, total_pages)
+            html = fetch_page(year, pg, session)
+            if not html:
+                log.warning("  Failed to fetch year=%d page=%d – skipping page.", year, pg)
+                time.sleep(DELAY_BETWEEN_PAGES)
+                continue  # skip this page but keep going with the rest
 
         sets = parse_sets(html)
-        log.info("  year=%d page=%d → %d sets found", year, pg, len(sets))
-
-        if not sets:
-            break
+        log.info("  year=%d page=%d/%d → %d sets found", year, pg, total_pages, len(sets))
 
         now = datetime.now(timezone.utc)
         for item in sets:
@@ -325,11 +340,8 @@ def scrape_year(session, update_stmt, year: int) -> int:
             download_image(item, session)
             total += 1
 
-        if not has_next_page(html, pg):
-            break
-
-        pg += 1
-        time.sleep(DELAY_BETWEEN_PAGES)  # polite delay before next page
+        if pg < total_pages:
+            time.sleep(DELAY_BETWEEN_PAGES)
 
     return total
 
