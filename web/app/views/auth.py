@@ -80,27 +80,3 @@ def logout():
     logout_user()
     flash("Logged out.", "success")
     return redirect(url_for("auth.login"))
-
-
-    if not form.validate_on_submit():
-        flash("Invalid request (CSRF or missing fields).", "danger")
-        return render_template("auth/login.html", form=form), 400
-
-    admin = get_admin()
-    if form.username.data != admin.username or not admin.check_password(form.password.data):
-        flash("Invalid credentials.", "danger")
-        return render_template("auth/login.html", form=form), 401
-
-    login_user(admin, remember=False)
-    next_url = request.args.get("next")
-    if next_url and next_url.startswith("/admin"):
-        return redirect(next_url)
-    return redirect(url_for("admin.index"))
-
-
-@bp.get("/admin/logout")
-@login_required
-def logout():
-    logout_user()
-    flash("Logged out.", "success")
-    return redirect(url_for("auth.login"))
