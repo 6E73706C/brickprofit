@@ -168,6 +168,21 @@ jobs:
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
+            # ── Init Cassandra schema (idempotent – IF NOT EXISTS guards) ──────
+            echo "Waiting for cassandra1 to be ready..."
+            for i in $(seq 1 30); do
+              CONTAINER=$(docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}' | head -1)
+              if [ -n "$CONTAINER" ]; then
+                if docker exec "$CONTAINER" cqlsh -u cassandra -p cassandra -e "DESCRIBE KEYSPACES" >/dev/null 2>&1; then
+                  echo "Cassandra is ready, running init.cql..."
+                  docker exec -i "$CONTAINER" cqlsh -u cassandra -p cassandra \
+                    < /opt/brickprofit/cassandra/init.cql && echo "Schema initialised." && break
+                fi
+              fi
+              echo "  attempt $i/30 – not ready yet, waiting 10s..."
+              sleep 10
+            done
+
   # ── Step 4: Rolling OS update + reboot (one node at a time) ────────────────
   rolling-reboot:
     runs-on: ubuntu-latest
