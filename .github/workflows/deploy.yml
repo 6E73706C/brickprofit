@@ -154,6 +154,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
+            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
 
   build-node1:
     runs-on: ubuntu-latest
@@ -174,6 +175,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
+            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
 
   build-node2:
     runs-on: ubuntu-latest
@@ -194,6 +196,7 @@ jobs:
             done
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
+            docker build --tag "brickprofit-lego-scraper:latest" ./lego-scraper
 
   # ── Step 3: Deploy stack from manager ──────────────────────────────────────
   deploy:
@@ -225,7 +228,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -254,7 +257,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -281,7 +284,7 @@ jobs:
               sleep 5
             fi
             docker stack deploy --compose-file /opt/brickprofit/docker-stack.yml --resolve-image never brickprofit
-            for SVC in nginx api web worker beat proxy-fetcher proxy-tester grafana prometheus node_exporter; do
+            for SVC in nginx api web worker beat proxy-fetcher proxy-tester lego-scraper grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
 
@@ -340,6 +343,15 @@ jobs:
             is_active  boolean,
             PRIMARY KEY (protocol, ip, port)
           );
+          CREATE TABLE IF NOT EXISTS lego_sets (
+            year        int,
+            item_no     text,
+            description text,
+            image_url   text,
+            first_seen  timestamp,
+            last_seen   timestamp,
+            PRIMARY KEY (year, item_no)
+          ) WITH CLUSTERING ORDER BY (item_no ASC);
           "
           for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
             H=$(echo "$H_P" | cut -d' ' -f1)

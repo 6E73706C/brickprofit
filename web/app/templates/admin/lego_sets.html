@@ -1,0 +1,102 @@
+{% extends "admin/layout.html" %}
+{% block title %}LEGO Sets – Admin{% endblock %}
+{% block content %}
+{% set total_pages = ((total - 1) // page_size + 1) if total else 1 %}
+{% if error %}
+<div class="bp-alert bp-alert-danger">
+  <i class="bi bi-exclamation-circle-fill"></i>
+  <strong>Error loading LEGO sets:</strong> {{ error }}
+</div>
+{% endif %}
+<div class="ph">
+  <div>
+    <p class="ph-title"><i class="bi bi-boxes" style="color:#4ade80;margin-right:.4rem;"></i>LEGO Sets</p>
+    <p class="ph-sub"><span id="lego-total">{{ total }}</span> sets scraped from BrickLink</p>
+  </div>
+  <form style="display:flex;gap:.5rem;align-items:center;" method="get">
+    <select name="year" class="bp-select" onchange="this.form.submit()">
+      <option value="" {% if not year_filter %}selected{% endif %}>All years</option>
+      {% for y in available_years %}
+        <option value="{{ y }}" {% if year_filter|string == y|string %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+<div class="bp-card">
+  <div style="overflow-x:auto;">
+    <table class="bp-tbl">
+      <thead>
+        <tr>
+          <th style="width:60px;">Image</th>
+          <th>Item No</th>
+          <th>Description</th>
+          <th>Year</th>
+          <th>First Seen</th>
+          <th>Last Updated</th>
+        </tr>
+      </thead>
+      <tbody id="lego-tbody">
+        {% for r in rows %}
+        <tr>
+          <td>
+            {% if r.image_url %}
+            <img src="{{ r.image_url }}" alt="{{ r.item_no }}"
+                 style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;">
+            {% else %}
+            <span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>
+            {% endif %}
+          </td>
+          <td><span class="mono">{{ r.item_no }}</span></td>
+          <td style="max-width:420px;white-space:normal;">{{ r.description or '—' }}</td>
+          <td><span class="badge b-green">{{ r.year }}</span></td>
+          <td class="dim">{{ r.first_seen }}</td>
+          <td class="dim">{{ r.last_seen }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6">
+            <div class="bp-empty">
+              <i class="bi bi-boxes"></i>
+              No LEGO sets yet — scraper is running.
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% include "admin/_pagination.html" %}
+{% endblock %}
+{% block extra_js %}<script>
+(function(){
+  const yr='{{ year_filter }}';
+  const pg={{ page }};
+  function refresh(){
+    fetch('/admin/api/lego-sets?year='+yr+'&page='+pg)
+      .then(r=>r.json()).then(d=>{
+        const tot=document.getElementById('lego-total');
+        if(tot) tot.textContent=d.total;
+        const tb=document.getElementById('lego-tbody');
+        if(!tb||!d.rows) return;
+        if(!d.rows.length){
+          tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-boxes"></i>No LEGO sets yet &mdash; scraper is running.</div></td></tr>';
+        } else {
+          tb.innerHTML=d.rows.map(r=>`<tr>
+            <td>${r.image_url
+              ? `<img src="${r.image_url}" alt="${r.item_no}" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;">`
+              : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>'}</td>
+            <td><span class="mono">${r.item_no}</span></td>
+            <td style="max-width:420px;white-space:normal;">${r.description||'—'}</td>
+            <td><span class="badge b-green">${r.year}</span></td>
+            <td class="dim">${r.first_seen}</td>
+            <td class="dim">${r.last_seen}</td>
+          </tr>`).join('');
+        }
+        document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
+      }).catch(()=>{});
+  }
+  setInterval(refresh,5000);
+  refresh();
+})();
+</script>{% endblock %}

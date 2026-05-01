@@ -1,0 +1,5 @@
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+cassandra-driver==3.29.2
+PySocks==1.7.1

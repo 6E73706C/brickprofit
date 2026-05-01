@@ -4,10 +4,10 @@
 <div class="ph">
   <div><p class="ph-title">Overview</p><p class="ph-sub">System summary</p></div>
 </div>
-{% set icons  = {'users':'people-fill','items':'box-seam-fill','proxies':'diagram-3-fill','golden_proxies':'trophy-fill','sessions':'key-fill'} %}
-{% set links  = {'users':url_for('admin.users'),'items':url_for('admin.items'),'proxies':url_for('admin.proxies'),'golden_proxies':url_for('admin.golden_proxies'),'sessions':url_for('admin.sessions')} %}
-{% set labels = {'users':'Users','items':'Items','proxies':'Fresh Proxies','golden_proxies':'Golden Proxies','sessions':'Sessions'} %}
-{% set colors = {'users':'b-blue','items':'b-blue','proxies':'b-blue','golden_proxies':'b-yellow','sessions':'b-blue'} %}
+{% set icons  = {'users':'people-fill','items':'box-seam-fill','proxies':'diagram-3-fill','golden_proxies':'trophy-fill','sessions':'key-fill','lego_sets':'boxes'} %}
+{% set links  = {'users':url_for('admin.users'),'items':url_for('admin.items'),'proxies':url_for('admin.proxies'),'golden_proxies':url_for('admin.golden_proxies'),'sessions':url_for('admin.sessions'),'lego_sets':url_for('admin.lego_sets')} %}
+{% set labels = {'users':'Users','items':'Items','proxies':'Fresh Proxies','golden_proxies':'Golden Proxies','sessions':'Sessions','lego_sets':'LEGO Sets'} %}
+{% set colors = {'users':'b-blue','items':'b-blue','proxies':'b-blue','golden_proxies':'b-yellow','sessions':'b-blue','lego_sets':'b-green'} %}
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1rem;">
   {% for table, count in counts.items() %}
   <a href="{{ links[table] }}" style="text-decoration:none;">

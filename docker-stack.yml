@@ -245,6 +245,31 @@ services:
           cpus: "1"
           memory: 256M
 
+  # ── LEGO Scraper (scrapes BrickLink catalog → lego_sets table) ────────────
+  lego-scraper:
+    image: brickprofit-lego-scraper:latest
+    build:
+      context: ./lego-scraper
+    environment:
+      - CASSANDRA_HOSTS=["cassandra1","cassandra2","cassandra3"]
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE}
+      - CASSANDRA_USER=${CASSANDRA_USER}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD}
+      - SCRAPE_INTERVAL_SECONDS=3600
+      - REQUEST_TIMEOUT_SECONDS=30
+      - DELAY_BETWEEN_PAGES_SECONDS=3
+    networks:
+      - backend_net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 60s
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
   # ── Redis  (cache + Celery broker) ────────────────────────────────────────
   redis:
     image: redis:7-alpine

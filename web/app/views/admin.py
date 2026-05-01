@@ -30,7 +30,7 @@ def _paginate(rows, page: int, size: int = PAGE_SIZE):
 def index():
     session = get_session()
     counts = {}
-    for table in ("users", "items", "proxies", "golden_proxies", "sessions"):
+    for table in ("users", "items", "proxies", "golden_proxies", "sessions", "lego_sets"):
         try:
             row = session.execute(f"SELECT COUNT(*) FROM {table}").one()  # noqa: S608
             counts[table] = row[0]
@@ -240,6 +240,55 @@ def golden_proxies():
     )
 
 
+# ── LEGO Sets ─────────────────────────────────────────────────────────────────
+@bp.get("/lego-sets")
+@login_required
+def lego_sets():
+    from datetime import datetime, timezone
+    session = get_session()
+    page = _page()
+    try:
+        year_filter = request.args.get("year", "")
+        current_year = datetime.now(timezone.utc).year
+        available_years = list(range(current_year - 5, current_year + 2))
+
+        if year_filter:
+            rows = session.execute(
+                "SELECT year, item_no, description, image_url, first_seen, last_seen "
+                "FROM lego_sets WHERE year = %s",
+                (int(year_filter),),
+            )
+        else:
+            # Fetch all years and combine
+            all_rows = []
+            for y in available_years:
+                r = session.execute(
+                    "SELECT year, item_no, description, image_url, first_seen, last_seen "
+                    "FROM lego_sets WHERE year = %s",
+                    (y,),
+                )
+                all_rows.extend(r)
+            rows = all_rows
+
+        data, total = _paginate(rows, page)
+        error = None
+    except Exception as exc:
+        data, total, error = [], 0, str(exc)
+        available_years = []
+        year_filter = ""
+
+    return render_template(
+        "admin/lego_sets.html",
+        rows=data,
+        page=page,
+        total=total,
+        page_size=PAGE_SIZE,
+        year_filter=year_filter,
+        available_years=available_years,
+        error=error,
+    )
+
+
 # ── Sessions ──────────────────────────────────────────────────────────────────
 @bp.get("/sessions")
 @login_required
@@ -263,7 +312,7 @@ def _fmt_ts(ts) -> str:
 def api_stats():
     session = get_session()
     counts = {}
-    for table in ("users", "items", "proxies", "golden_proxies", "sessions"):
+    for table in ("users", "items", "proxies", "golden_proxies", "sessions", "lego_sets"):
         try:
             row = session.execute(f"SELECT COUNT(*) FROM {table}").one()  # noqa: S608
             counts[table] = int(row[0])
@@ -333,6 +382,51 @@ def api_golden_proxies_json():
                     "ip": r.ip,
                     "port": r.port,
                     "source": r.source or "",
+                    "first_seen": _fmt_ts(r.first_seen),
+                    "last_seen": _fmt_ts(r.last_seen),
+                }
+                for r in data
+            ],
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc), "rows": [], "total": 0})
+
+
+@bp.get("/api/lego-sets")
+@login_required
+def api_lego_sets_json():
+    from datetime import datetime, timezone
+    session = get_session()
+    page = _page()
+    year_filter = request.args.get("year", "")
+    current_year = datetime.now(timezone.utc).year
+    available_years = list(range(current_year - 5, current_year + 2))
+    try:
+        if year_filter:
+            rows = session.execute(
+                "SELECT year, item_no, description, image_url, first_seen, last_seen "
+                "FROM lego_sets WHERE year = %s",
+                (int(year_filter),),
+            )
+        else:
+            all_rows = []
+            for y in available_years:
+                r = session.execute(
+                    "SELECT year, item_no, description, image_url, first_seen, last_seen "
+                    "FROM lego_sets WHERE year = %s",
+                    (y,),
+                )
+                all_rows.extend(r)
+            rows = all_rows
+        data, total = _paginate(rows, page)
+        return jsonify({
+            "total": total,
+            "rows": [
+                {
+                    "year": r.year,
+                    "item_no": r.item_no,
+                    "description": r.description or "",
+                    "image_url": r.image_url or "",
                     "first_seen": _fmt_ts(r.first_seen),
                     "last_seen": _fmt_ts(r.last_seen),
                 }

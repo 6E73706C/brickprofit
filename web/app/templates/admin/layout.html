@@ -126,6 +126,9 @@
     <a class="snav {% if request.endpoint=='admin.proxies' %}active{% endif %}" href="{{ url_for('admin.proxies') }}"><i class="bi bi-diagram-3-fill"></i> Fresh Proxies</a>
     <a class="snav {% if request.endpoint=='admin.golden_proxies' %}active{% endif %}" href="{{ url_for('admin.golden_proxies') }}"><i class="bi bi-trophy-fill"></i> Golden Proxies</a>
 
+    <div class="nav-section">Catalog</div>
+    <a class="snav {% if request.endpoint=='admin.lego_sets' %}active{% endif %}" href="{{ url_for('admin.lego_sets') }}"><i class="bi bi-boxes"></i> LEGO Sets</a>
+
     <div class="nav-section">System</div>
     <a class="snav {% if request.endpoint=='admin.sessions' %}active{% endif %}" href="{{ url_for('admin.sessions') }}"><i class="bi bi-key-fill"></i> Sessions</a>
     <a class="snav {% if request.endpoint=='admin.containers' %}active{% endif %}" href="{{ url_for('admin.containers') }}"><i class="bi bi-boxes"></i> Containers</a>

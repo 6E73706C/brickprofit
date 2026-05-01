@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS golden_proxies (
     PRIMARY KEY (protocol, ip, port)
 );
 
+-- ─── LEGO Sets ───────────────────────────────────────────────────────────────
+-- Scraped from BrickLink by the lego-scraper service.
+CREATE TABLE IF NOT EXISTS lego_sets (
+    year        INT,
+    item_no     TEXT,
+    description TEXT,
+    image_url   TEXT,
+    first_seen  TIMESTAMP,
+    last_seen   TIMESTAMP,
+    PRIMARY KEY (year, item_no)
+) WITH CLUSTERING ORDER BY (item_no ASC);
+
 -- ─── Sessions / tokens ───────────────────────────────────────────────────────
 -- "token" is a reserved CQL keyword – must be double-quoted
 CREATE TABLE IF NOT EXISTS sessions (
