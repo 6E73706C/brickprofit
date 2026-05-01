@@ -351,9 +351,9 @@ jobs:
             for i in $(seq 1 30); do
               CONTAINER=$(s "$H" "$P" "docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}'" 2>/dev/null | head -1 || true)
               if [ -n "$CONTAINER" ]; then
-                if s "$H" "$P" "docker exec $CONTAINER cqlsh -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'" >/dev/null 2>&1; then
+                if s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; docker exec $CONTAINER cqlsh -u \$CASSANDRA_USER -p \$CASSANDRA_PASSWORD -e 'DESCRIBE KEYSPACES'" >/dev/null 2>&1; then
                   echo "Cassandra ready on $H – running init.cql..."
-                  sshpass -p "$P" ssh -o StrictHostKeyChecking=no root@"$H" "docker exec -i $CONTAINER cqlsh -u cassandra -p cassandra" \
+                  sshpass -p "$P" ssh -o StrictHostKeyChecking=no root@"$H" "set -a; source /opt/brickprofit/.env; set +a; docker exec -i $CONTAINER cqlsh -u \$CASSANDRA_USER -p \$CASSANDRA_PASSWORD" \
                     < cassandra/init.cql && echo "Schema initialised." || echo "Schema init errors (may already exist)"
                   exit 0
                 fi
@@ -403,9 +403,9 @@ jobs:
             P=$(echo "$H_P" | cut -d' ' -f2)
             CONTAINER=$(s "$H" "$P" "docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}'" 2>/dev/null | head -1 || true)
             if [ -n "$CONTAINER" ]; then
-              if s "$H" "$P" "docker exec $CONTAINER cqlsh -u cassandra -p cassandra -e 'DESCRIBE KEYSPACES'" >/dev/null 2>&1; then
+              if s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; docker exec $CONTAINER cqlsh -u \$CASSANDRA_USER -p \$CASSANDRA_PASSWORD -e 'DESCRIBE KEYSPACES'" >/dev/null 2>&1; then
                 echo "Applying migrations on $H..."
-                s "$H" "$P" "docker exec $CONTAINER cqlsh -u cassandra -p cassandra -e \"$MIGRATION\"" \
+                s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; docker exec $CONTAINER cqlsh -u \$CASSANDRA_USER -p \$CASSANDRA_PASSWORD -e \"$MIGRATION\"" \
                   && echo "Migrations applied." || echo "Migration error on $H (continuing)"
                 exit 0
               fi
