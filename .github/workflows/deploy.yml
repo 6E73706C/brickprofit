@@ -14,11 +14,11 @@ jobs:
 
       - name: Bootstrap nodes
         env:
-          N0_HOST: ${{ secrets.NODE0_HOST }}
+          N0_HOST: ${{ vars.NODE0_HOST }}
           N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
-          N1_HOST: ${{ secrets.NODE1_HOST }}
+          N1_HOST: ${{ vars.NODE1_HOST }}
           N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
-          N2_HOST: ${{ secrets.NODE2_HOST }}
+          N2_HOST: ${{ vars.NODE2_HOST }}
           N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
         run: |
           set -euo pipefail
@@ -75,7 +75,7 @@ jobs:
       - name: Build on NODE0
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.NODE0_HOST }}
+          host: ${{ vars.NODE0_HOST }}
           username: root
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           script: |
@@ -92,7 +92,7 @@ jobs:
       - name: Build on NODE1
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.NODE1_HOST }}
+          host: ${{ vars.NODE1_HOST }}
           username: root
           password: ${{ secrets.NODE1_SSH_PASSWORD }}
           script: |
@@ -109,7 +109,7 @@ jobs:
       - name: Build on NODE2
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.NODE2_HOST }}
+          host: ${{ vars.NODE2_HOST }}
           username: root
           password: ${{ secrets.NODE2_SSH_PASSWORD }}
           script: |
@@ -127,7 +127,7 @@ jobs:
       - name: Deploy stack from NODE0
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.NODE0_HOST }}
+          host: ${{ vars.NODE0_HOST }}
           username: root
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           script: |
