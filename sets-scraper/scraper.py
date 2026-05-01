@@ -73,29 +73,68 @@ def connect(retries: int = 20, delay: int = 10):
             time.sleep(delay)
 
 
-def get_golden_proxy(session) -> dict | None:
-    """Pick a random golden proxy from Cassandra. Returns a requests proxies dict or None."""
+def pick_proxy(session) -> tuple[object, dict]:
+    """
+    Pick a random golden proxy from Cassandra.
+    Returns (row, proxies_dict).  Raises RuntimeError if the table is empty.
+    """
+    rows = list(session.execute("SELECT protocol, ip, port FROM golden_proxies"))
+    if not rows:
+        raise RuntimeError("No golden proxies available – refusing to go direct.")
+    row = random.choice(rows)
+    if row.protocol == "http":
+        proxy_url = f"http://{row.ip}:{row.port}"
+    elif row.protocol == "socks4":
+        proxy_url = f"socks4://{row.ip}:{row.port}"
+    elif row.protocol == "socks5":
+        proxy_url = f"socks5://{row.ip}:{row.port}"
+    else:
+        raise RuntimeError(f"Unknown proxy protocol: {row.protocol}")
+    log.debug("Using proxy %s:%s (%s)", row.ip, row.port, row.protocol)
+    return row, {"http": proxy_url, "https": proxy_url}
+
+
+def drop_proxy(session, row) -> None:
+    """Remove a bad proxy from Cassandra so it is never used again."""
     try:
-        rows = list(session.execute(
-            "SELECT protocol, ip, port FROM golden_proxies"
-        ))
-        if not rows:
-            log.warning("No golden proxies available – requests will go direct.")
-            return None
-        row = random.choice(rows)
-        if row.protocol == "http":
-            proxy_url = f"http://{row.ip}:{row.port}"
-        elif row.protocol == "socks4":
-            proxy_url = f"socks4://{row.ip}:{row.port}"
-        elif row.protocol == "socks5":
-            proxy_url = f"socks5://{row.ip}:{row.port}"
-        else:
-            return None
-        log.debug("Using proxy %s (%s)", proxy_url, row.protocol)
-        return {"http": proxy_url, "https": proxy_url}
+        session.execute(
+            "DELETE FROM golden_proxies WHERE protocol = %s AND ip = %s AND port = %s",
+            (row.protocol, row.ip, row.port),
+        )
+        log.info("Dropped dead proxy %s:%s from golden_proxies.", row.ip, row.port)
     except Exception as exc:
-        log.warning("Failed to fetch golden proxy: %s", exc)
-        return None
+        log.warning("Failed to drop proxy %s:%s: %s", row.ip, row.port, exc)
+
+
+def fetch_with_proxy(url: str, session, *, params: dict | None = None,
+                     stream: bool = False, retries: int = 3) -> requests.Response:
+    """
+    GET *url* through a golden proxy.
+    On any failure the offending proxy is deleted from the DB and the next
+    proxy is tried.  Raises RuntimeError if all retries fail or no proxies
+    are left.  Never falls back to a direct connection.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        proxy_row, proxies = pick_proxy(session)  # raises if table empty
+        try:
+            resp = requests.get(
+                url,
+                params=params,
+                headers=HEADERS,
+                proxies=proxies,
+                timeout=REQUEST_TIMEOUT,
+                stream=stream,
+            )
+            resp.raise_for_status()
+            return resp
+        except Exception as exc:
+            log.warning("Request attempt %d/%d via %s:%s failed: %s",
+                        attempt, retries, proxy_row.ip, proxy_row.port, exc)
+            drop_proxy(session, proxy_row)
+            last_exc = exc
+            time.sleep(2)
+    raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
 # ── Year range ────────────────────────────────────────────────────────────────
@@ -116,30 +155,19 @@ HEADERS = {
 }
 
 
-def fetch_page(year: int, pg: int, proxies: dict | None, session) -> str | None:
-    """Fetch one catalog page.  Retries up to 3 times, rotating proxy on each retry."""
+def fetch_page(year: int, pg: int, session) -> str | None:
+    """Fetch one catalog page via a golden proxy.  Returns HTML or None on failure."""
     params = {
         "catType": "S",
         "itemYear": str(year),
         "pg": str(pg),
     }
-    for attempt in range(1, 4):
-        try:
-            resp = requests.get(
-                BRICKLINK_BASE,
-                params=params,
-                headers=HEADERS,
-                proxies=proxies,
-                timeout=REQUEST_TIMEOUT,
-            )
-            resp.raise_for_status()
-            return resp.text
-        except Exception as exc:
-            log.warning("Fetch year=%d pg=%d attempt %d/3 failed: %s", year, pg, attempt, exc)
-            # Rotate to a fresh proxy on retry
-            proxies = get_golden_proxy(session)
-            time.sleep(2)
-    return None
+    try:
+        resp = fetch_with_proxy(BRICKLINK_BASE, session, params=params, retries=3)
+        return resp.text
+    except RuntimeError as exc:
+        log.warning("fetch_page year=%d pg=%d: %s", year, pg, exc)
+        return None
 
 
 def parse_sets(html: str) -> list[dict]:
@@ -210,8 +238,8 @@ def has_next_page(html: str, current_pg: int) -> bool:
 
 
 # ── Image download ───────────────────────────────────────────────────────────
-def download_image(item: dict, proxies: dict | None = None) -> None:
-    """Download the large image for a set to IMAGE_DIR if not already cached."""
+def download_image(item: dict, session) -> None:
+    """Download the large image for a set to IMAGE_DIR via a golden proxy."""
     large_url = item.get("large_image_url", "")
     item_no   = item.get("item_no", "")
     if not large_url or not item_no:
@@ -223,15 +251,15 @@ def download_image(item: dict, proxies: dict | None = None) -> None:
     os.makedirs(IMAGE_DIR, exist_ok=True)
     tmp = dest + ".tmp"
     try:
-        resp = requests.get(large_url, headers=HEADERS, proxies=proxies, timeout=15, stream=True)
-        resp.raise_for_status()
+        resp = fetch_with_proxy(large_url, session, stream=True, retries=3)
         with open(tmp, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
         os.replace(tmp, dest)
         log.debug("Downloaded image for %s", item_no)
-    except Exception as exc:
+    except RuntimeError as exc:
         log.warning("Failed to download image for %s: %s", item_no, exc)
+    finally:
         if os.path.exists(tmp):
             try:
                 os.unlink(tmp)
@@ -275,13 +303,12 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
 # ── Main scrape cycle ─────────────────────────────────────────────────────────
 def scrape_year(session, update_stmt, year: int) -> int:
     """Scrape all pages for a given year. Returns number of sets processed."""
-    proxy = get_golden_proxy(session)
     total = 0
     pg = 1
 
     while True:
         log.info("  Fetching year=%d page=%d …", year, pg)
-        html = fetch_page(year, pg, proxy, session)
+        html = fetch_page(year, pg, session)
         if not html:
             log.warning("  Failed to fetch year=%d page=%d – skipping.", year, pg)
             break
@@ -295,7 +322,7 @@ def scrape_year(session, update_stmt, year: int) -> int:
         now = datetime.now(timezone.utc)
         for item in sets:
             upsert_set(session, None, update_stmt, year, item, now)
-            download_image(item, proxy)
+            download_image(item, session)
             total += 1
 
         if not has_next_page(html, pg):

@@ -25,26 +25,56 @@ def _safe_filename(item_no: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
 
 
-def _get_golden_proxy_url() -> dict | None:
-    """Fetch a random golden proxy from Cassandra and return a requests proxies dict."""
+def _pick_proxy() -> tuple[object, dict]:
+    """
+    Pick a random golden proxy from Cassandra.
+    Returns (row, proxies_dict).  Raises RuntimeError if the table is empty.
+    """
+    import random
+    session = get_session()
+    rows = list(session.execute("SELECT protocol, ip, port FROM golden_proxies"))
+    if not rows:
+        raise RuntimeError("No golden proxies available – refusing to go direct.")
+    row = random.choice(rows)
+    if row.protocol == "http":
+        url = f"http://{row.ip}:{row.port}"
+    elif row.protocol == "socks4":
+        url = f"socks4://{row.ip}:{row.port}"
+    elif row.protocol == "socks5":
+        url = f"socks5://{row.ip}:{row.port}"
+    else:
+        raise RuntimeError(f"Unknown proxy protocol: {row.protocol}")
+    return row, {"http": url, "https": url}
+
+
+def _drop_proxy(row) -> None:
+    """Remove a failed proxy from Cassandra so it is never used again."""
     try:
-        import random
-        session = get_session()
-        rows = list(session.execute("SELECT protocol, ip, port FROM golden_proxies"))
-        if not rows:
-            return None
-        row = random.choice(rows)
-        if row.protocol == "http":
-            url = f"http://{row.ip}:{row.port}"
-        elif row.protocol == "socks4":
-            url = f"socks4://{row.ip}:{row.port}"
-        elif row.protocol == "socks5":
-            url = f"socks5://{row.ip}:{row.port}"
-        else:
-            return None
-        return {"http": url, "https": url}
+        get_session().execute(
+            "DELETE FROM golden_proxies WHERE protocol = %s AND ip = %s AND port = %s",
+            (row.protocol, row.ip, row.port),
+        )
     except Exception:
-        return None
+        pass
+
+
+def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "_requests.Response":
+    """
+    GET *url* through a golden proxy, deleting the proxy on failure.
+    Raises RuntimeError if all retries fail or no proxies remain.  Never goes direct.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, retries + 1):
+        proxy_row, proxies = _pick_proxy()  # raises if table is empty
+        try:
+            resp = _requests.get(url, proxies=proxies, timeout=20, stream=stream)
+            resp.raise_for_status()
+            return resp
+        except Exception as exc:
+            _drop_proxy(proxy_row)
+            last_exc = exc
+            time.sleep(1)
+    raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
 def _backfill_worker(rows: list) -> None:
@@ -53,7 +83,6 @@ def _backfill_worker(rows: list) -> None:
     images_dir.mkdir(parents=True, exist_ok=True)
     done = 0
     errors = 0
-    proxy = _get_golden_proxy_url()  # one proxy to start; rotated on error
     for row in rows:
         try:
             item_no = row.item_no
@@ -61,7 +90,6 @@ def _backfill_worker(rows: list) -> None:
             if not item_no or not image_url:
                 done += 1
                 continue
-            # convert thumbnail URL to large image URL (same logic as scraper)
             large_url = image_url.replace("/ItemImage/ST/", "/ItemImage/SL/")
             large_url = re.sub(r"\.t1\.png$", ".png", large_url)
             dest = images_dir / _safe_filename(item_no)
@@ -72,22 +100,20 @@ def _backfill_worker(rows: list) -> None:
                 continue
             tmp = dest.with_suffix(".tmp")
             try:
-                resp = _requests.get(large_url, timeout=15, stream=True, proxies=proxy)
-                resp.raise_for_status()
+                resp = _fetch_via_proxy(large_url, stream=True, retries=3)
                 with open(tmp, "wb") as fh:
                     for chunk in resp.iter_content(65536):
                         fh.write(chunk)
                 tmp.rename(dest)
-            except Exception:
+            except RuntimeError as exc:
                 errors += 1
-                proxy = _get_golden_proxy_url()  # rotate proxy on failure
                 if tmp.exists():
                     tmp.unlink(missing_ok=True)
             done += 1
             with _backfill_lock:
                 _backfill_state["done"] = done
                 _backfill_state["errors"] = errors
-            time.sleep(0.1)  # be polite, ~10 req/s
+            time.sleep(0.1)
         except Exception:
             errors += 1
             done += 1
