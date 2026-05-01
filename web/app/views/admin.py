@@ -4,7 +4,6 @@ import threading
 import time
 from pathlib import Path
 
-import requests as _requests
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
 
@@ -58,16 +57,17 @@ def _drop_proxy(row) -> None:
         pass
 
 
-def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "_requests.Response":
+def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "object":
     """
     GET *url* through a golden proxy, deleting the proxy on failure.
     Raises RuntimeError if all retries fail or no proxies remain.  Never goes direct.
     """
+    import requests as _req
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
         proxy_row, proxies = _pick_proxy()  # raises if table is empty
         try:
-            resp = _requests.get(url, proxies=proxies, timeout=20, stream=stream)
+            resp = _req.get(url, proxies=proxies, timeout=20, stream=stream)
             resp.raise_for_status()
             return resp
         except Exception as exc:

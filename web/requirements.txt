@@ -8,3 +8,4 @@ celery==5.4.0
 prometheus-flask-exporter==0.23.1
 docker==7.1.0
 requests==2.32.3
+PySocks==1.7.1

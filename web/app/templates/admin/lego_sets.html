@@ -132,16 +132,21 @@ function updateBackfillStatus(d){
   }
 }
 function pollBackfill(){
-  fetch('/admin/api/backfill-lego-images').then(r=>r.json()).then(updateBackfillStatus).catch(()=>{});
+  fetch('/admin/api/backfill-lego-images')
+    .then(r=>r.ok?r.json():Promise.reject(r.status))
+    .then(updateBackfillStatus).catch(()=>{});
 }
 function startBackfill(){
   document.getElementById('backfill-status').textContent='Starting…';
   document.getElementById('backfill-btn').disabled=true;
   fetch('/admin/api/backfill-lego-images',{method:'POST'})
-    .then(r=>r.json()).then(d=>{
+    .then(r=>{
+      if(!r.ok) return r.text().then(t=>{throw new Error('Server error '+r.status+': '+t.slice(0,200));});
+      return r.json();
+    }).then(d=>{
       updateBackfillStatus(d);
     }).catch(e=>{
-      document.getElementById('backfill-status').textContent='Error: '+e;
+      document.getElementById('backfill-status').textContent='Error: '+e.message;
       document.getElementById('backfill-btn').disabled=false;
     });
 }
