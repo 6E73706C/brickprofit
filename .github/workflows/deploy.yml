@@ -99,6 +99,8 @@ jobs:
               # Allow Docker overlay subnets (10.0.0.0/8) to reach node_exporter
               # so Prometheus works even when containerised on the same host
               ufw allow from 10.0.0.0/8 to any port 9100 proto tcp comment 'node_exporter overlay access'
+              # Allow Docker bridge subnet (172.16.0.0/12) – covers same-host scraping
+              ufw allow from 172.16.0.0/12 to any port 9100 proto tcp comment 'node_exporter bridge access'
 
               ufw --force enable
               ufw status verbose
