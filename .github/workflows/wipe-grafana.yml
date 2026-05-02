@@ -50,6 +50,7 @@ jobs:
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           command_timeout: 10m
           script: |
+            cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             set -a; source /opt/brickprofit/.env; set +a
             docker stack deploy \
               --compose-file /opt/brickprofit/docker-stack.yml \

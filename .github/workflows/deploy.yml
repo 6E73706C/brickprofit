@@ -431,7 +431,14 @@ jobs:
             GID=$(s "$H" "$P" "docker ps --filter name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
             if [ -n "$GID" ]; then
               GRAFANA_PASSWORD=$(s "$H" "$P" "grep '^GRAFANA_PASSWORD=' /opt/brickprofit/.env | cut -d= -f2-")
-              s "$H" "$P" "docker exec $GID grafana cli admin reset-admin-password '$GRAFANA_PASSWORD'" \
+              GRAFANA_ADMIN_USER=$(s "$H" "$P" "grep '^GRAFANA_ADMIN_USER=' /opt/brickprofit/.env | cut -d= -f2-")
+              GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER:-grafana_admin}
+              # Reset password via Grafana API (works regardless of username)
+              s "$H" "$P" "curl -sf -X PUT -H 'Content-Type: application/json' \
+                -u '${GRAFANA_ADMIN_USER}:${GRAFANA_PASSWORD}' \
+                http://localhost:3000/api/user/password \
+                -d '{\"oldPassword\":\"${GRAFANA_PASSWORD}\",\"newPassword\":\"${GRAFANA_PASSWORD}\",\"confirmNew\":\"${GRAFANA_PASSWORD}\"}' || \
+                docker exec $GID grafana cli admin reset-admin-password '${GRAFANA_PASSWORD}'" \
                 && echo "Grafana password synced on $H." || echo "Grafana password sync failed (non-fatal)"
               break
             fi
