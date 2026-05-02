@@ -122,15 +122,20 @@ function updateBackfillStatus(d){
   if(!btn||!lbl) return;
   if(d.running){
     const pct=d.total?Math.round(d.done/d.total*100):0;
-    lbl.textContent=`Downloading… ${d.done}/${d.total} (${pct}%) • ${d.errors} errors`;
+    const errTxt=d.errors>0?` • ${d.errors} errors`:'';
+    lbl.textContent=`Downloading… ${d.done}/${d.total} (${pct}%)${errTxt}`;
     btn.disabled=true;
     if(!_backfillPoll) _backfillPoll=setInterval(pollBackfill,2000);
   } else {
-    if(d.total!=null && d.done!=null){
+    if(d.total!=null && d.done!=null && d.total>0){
       lbl.textContent=d.errors>0
         ? `Done: ${d.done} processed, ${d.errors} failed`
-        : d.done>0 ? `Done: ${d.done} images processed` : '';
+        : d.done>0 ? `Done: ${d.done} images downloaded` : '';
+    } else if(d.last_error) {
+      lbl.style.color='#f87171';
+      lbl.textContent=`Failed: ${d.last_error}`;
     } else { lbl.textContent=''; }
+    lbl.style.color='';
     btn.disabled=false;
     if(_backfillPoll){clearInterval(_backfillPoll);_backfillPoll=null;}
   }

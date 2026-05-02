@@ -20,7 +20,8 @@ import json
 
 _backfill_lock = threading.Lock()
 _BACKFILL_STATE_FILE = Path(os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")) / ".backfill_state.json"
-_EMPTY_STATE: dict = {"running": False, "done": 0, "total": 0, "errors": 0, "started_at": None}
+_BACKFILL_LOCK_FILE = Path(os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")) / ".backfill.lock"
+_EMPTY_STATE: dict = {"running": False, "done": 0, "total": 0, "errors": 0, "started_at": None, "last_error": None}
 
 
 def _read_state() -> dict:
@@ -76,6 +77,25 @@ def _drop_proxy(row) -> None:
         pass
 
 
+def _fetch_image_direct(url: str, *, stream: bool = False) -> "object":
+    """
+    Download an image URL directly (no proxy).  Used for BrickLink CDN
+    which is a static asset host, not the scraping target.
+    """
+    import requests as _req
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.bricklink.com/",
+    }
+    resp = _req.get(url, headers=headers, timeout=30, stream=stream)
+    resp.raise_for_status()
+    return resp
+
+
 def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "object":
     """
     GET *url* through a golden proxy.
@@ -108,54 +128,72 @@ def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "ob
 
 
 def _backfill_worker(rows: list) -> None:
+    import fcntl
     images_dir = Path(LEGO_IMAGES_DIR)
     images_dir.mkdir(parents=True, exist_ok=True)
-    done = 0
-    errors = 0
-    for row in rows:
-        try:
-            item_no = row.item_no
-            image_url = row.image_url
-            if not item_no or not image_url:
-                done += 1
-                continue
-            large_url = image_url.replace("/ItemImage/ST/", "/ItemImage/SL/")
-            large_url = re.sub(r"\.t1\.png$", ".png", large_url)
-            dest = images_dir / _safe_filename(item_no)
-            if dest.exists():
+    # Cross-process lock: only one replica runs the worker at a time
+    lock_fh = open(_BACKFILL_LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        # Another replica already holds the lock
+        lock_fh.close()
+        with _backfill_lock:
+            state = _read_state()
+            state["running"] = False
+            _write_state(state)
+        return
+    try:
+        done = 0
+        errors = 0
+        for row in rows:
+            try:
+                item_no = row.item_no
+                image_url = row.image_url
+                if not item_no or not image_url:
+                    done += 1
+                    continue
+                large_url = image_url.replace("/ItemImage/ST/", "/ItemImage/SL/")
+                large_url = re.sub(r"\.t1\.png$", ".png", large_url)
+                dest = images_dir / _safe_filename(item_no)
+                if dest.exists():
+                    done += 1
+                    with _backfill_lock:
+                        state = _read_state()
+                        state["done"] = done
+                        _write_state(state)
+                    continue
+                tmp = dest.with_suffix(".tmp")
+                try:
+                    # Download directly from CDN – no proxy needed for static assets
+                    resp = _fetch_image_direct(large_url, stream=True)
+                    with open(tmp, "wb") as fh:
+                        for chunk in resp.iter_content(65536):
+                            fh.write(chunk)
+                    tmp.rename(dest)
+                except Exception as exc:
+                    errors += 1
+                    if tmp.exists():
+                        tmp.unlink(missing_ok=True)
                 done += 1
                 with _backfill_lock:
                     state = _read_state()
                     state["done"] = done
+                    state["errors"] = errors
                     _write_state(state)
-                continue
-            tmp = dest.with_suffix(".tmp")
-            try:
-                resp = _fetch_via_proxy(large_url, stream=True, retries=3)
-                with open(tmp, "wb") as fh:
-                    for chunk in resp.iter_content(65536):
-                        fh.write(chunk)
-                tmp.rename(dest)
-            except RuntimeError:
+                time.sleep(0.05)
+            except Exception:
                 errors += 1
-                if tmp.exists():
-                    tmp.unlink(missing_ok=True)
-            done += 1
-            with _backfill_lock:
-                state = _read_state()
-                state["done"] = done
-                state["errors"] = errors
-                _write_state(state)
-            time.sleep(0.1)
-        except Exception:
-            errors += 1
-            done += 1
-    with _backfill_lock:
-        state = _read_state()
-        state["running"] = False
-        state["done"] = done
-        state["errors"] = errors
-        _write_state(state)
+                done += 1
+        with _backfill_lock:
+            state = _read_state()
+            state["running"] = False
+            state["done"] = done
+            state["errors"] = errors
+            _write_state(state)
+    finally:
+        fcntl.flock(lock_fh, fcntl.LOCK_UN)
+        lock_fh.close()
 
 
 def _page() -> int:
