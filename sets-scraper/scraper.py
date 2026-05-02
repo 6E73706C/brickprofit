@@ -308,53 +308,62 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
 
 
 # ── Main scrape cycle ─────────────────────────────────────────────────────────
-def scrape_year(session, update_stmt, year: int) -> int:
-    """Scrape all pages for a given year. Returns number of sets processed."""
-    total = 0
+def discover_pages(session, years: list[int]) -> list[tuple[int, int]]:
+    """
+    Fetch page 1 of every year to learn total page counts.
+    Returns a flat list of (year, page) tuples for every page that exists,
+    in randomised order so scraping never follows a predictable pattern.
+    """
+    all_pairs: list[tuple[int, int]] = []
+    random.shuffle(years)  # even discovery order is randomised
+    for year in years:
+        log.info("Discovering pages for year=%d …", year)
+        html = fetch_page(year, 1, session)
+        if not html:
+            log.warning("  Could not reach year=%d during discovery – will retry next cycle.", year)
+            continue
+        total = get_total_pages(html)
+        log.info("  year=%d → %d pages", year, total)
+        # page 1 HTML is already in hand; tag it so the scraper can reuse it
+        all_pairs.append((year, 1))
+        for pg in range(2, total + 1):
+            all_pairs.append((year, pg))
+        time.sleep(DELAY_BETWEEN_PAGES)
 
-    # Fetch page 1 first to learn the total number of pages
-    log.info("  Fetching year=%d page=1 (discovering total pages) …", year)
-    html = fetch_page(year, 1, session)
+    random.shuffle(all_pairs)
+    return all_pairs
+
+
+def scrape_page(session, update_stmt, year: int, pg: int, prefetched_html: str | None = None) -> int:
+    """Scrape a single (year, page) pair. Returns number of sets upserted."""
+    html = prefetched_html if prefetched_html else fetch_page(year, pg, session)
     if not html:
-        log.warning("  Failed to fetch year=%d page=1 – skipping year.", year)
+        log.warning("  Skipping year=%d page=%d (fetch failed).", year, pg)
         return 0
-
-    total_pages = get_total_pages(html)
-    log.info("  year=%d → %d total pages", year, total_pages)
-
-    for pg in range(1, total_pages + 1):
-        if pg > 1:
-            log.info("  Fetching year=%d page=%d/%d …", year, pg, total_pages)
-            html = fetch_page(year, pg, session)
-            if not html:
-                log.warning("  Failed to fetch year=%d page=%d – skipping page.", year, pg)
-                time.sleep(DELAY_BETWEEN_PAGES)
-                continue  # skip this page but keep going with the rest
-
-        sets = parse_sets(html)
-        log.info("  year=%d page=%d/%d → %d sets found", year, pg, total_pages, len(sets))
-
-        now = datetime.now(timezone.utc)
-        for item in sets:
-            upsert_set(session, None, update_stmt, year, item, now)
-            download_image(item, session)
-            total += 1
-
-        if pg < total_pages:
-            time.sleep(DELAY_BETWEEN_PAGES)
-
-    return total
+    sets = parse_sets(html)
+    log.info("  year=%d page=%d → %d sets", year, pg, len(sets))
+    now = datetime.now(timezone.utc)
+    for item in sets:
+        upsert_set(session, None, update_stmt, year, item, now)
+        download_image(item, session)
+    return len(sets)
 
 
 def run_once(session, update_stmt) -> None:
     years = target_years()
-    log.info("Starting scrape cycle for years: %s", years)
+    log.info("═══ Discovery pass for years: %s ═══", years)
+
+    # Discovery: learn total pages per year (page 1 fetched here, reused below)
+    all_pairs = discover_pages(session, years)
+    log.info("Total (year, page) pairs to scrape: %d – order randomised.", len(all_pairs))
+
     grand_total = 0
-    for year in years:
-        count = scrape_year(session, update_stmt, year)
-        log.info("  year=%d → %d sets upserted", year, count)
+    for i, (year, pg) in enumerate(all_pairs, 1):
+        log.info("[%d/%d] Scraping year=%d page=%d …", i, len(all_pairs), year, pg)
+        count = scrape_page(session, update_stmt, year, pg)
         grand_total += count
         time.sleep(DELAY_BETWEEN_PAGES)
+
     log.info("Cycle complete. %d total set records upserted.", grand_total)
 
 
