@@ -709,3 +709,40 @@ def api_backfill_lego_images():
 def api_backfill_lego_images_status():
     state = _read_state()
     return jsonify({"status": "running" if state.get("running") else "idle", **state})
+
+
+# ── LEGO bad-row cleanup ────────────────────────────────────────────────────
+@bp.post("/api/purge-bad-lego-rows")
+@login_required
+def api_purge_bad_lego_rows():
+    """
+    Delete all lego_sets rows whose description looks like the old parsing
+    artefact '( Inv )' so the scraper can re-insert them with the correct name.
+    Uses full-table scans per year (Cassandra has no LIKE operator).
+    """
+    from datetime import datetime, timezone
+    import re as _re
+    session = get_session()
+    current_year = datetime.now(timezone.utc).year
+    deleted = 0
+    errors = 0
+    # pattern: description is blank, only whitespace, or matches "( Inv )" variants
+    _bad = _re.compile(r'^\s*\(\s*Inv\s*\)\s*$', _re.I)
+    for y in range(2000, current_year + 2):
+        try:
+            rows = list(session.execute(
+                "SELECT year, item_no, description FROM lego_sets WHERE year = %s", (y,)
+            ))
+            for r in rows:
+                if not r.description or _bad.match(r.description):
+                    try:
+                        session.execute(
+                            "DELETE FROM lego_sets WHERE year = %s AND item_no = %s",
+                            (r.year, r.item_no),
+                        )
+                        deleted += 1
+                    except Exception:
+                        errors += 1
+        except Exception:
+            pass
+    return jsonify({"deleted": deleted, "errors": errors})

@@ -25,7 +25,11 @@
     <button id="backfill-btn" class="bp-btn" onclick="startBackfill()" title="Download all missing LEGO images from BrickLink">
       <i class="bi bi-cloud-download"></i> Download Images
     </button>
+    <button id="purge-btn" class="bp-btn" onclick="purgeBadRows()" title="Delete rows with bad \"( Inv )\" description so they get re-scraped">
+      <i class="bi bi-trash"></i> Purge Bad Rows
+    </button>
     <span id="backfill-status" style="font-size:.82rem;color:#94a3b8;"></span>
+    <span id="purge-status" style="font-size:.82rem;color:#94a3b8;"></span>
   </div>
 </div>
 <div class="bp-card">
@@ -152,6 +156,18 @@ function startBackfill(){
 }
 // check if a backfill is already running on page load
 pollBackfill();
+
+// ── Purge bad rows ───────────────────────────────────────────────────────────
+function purgeBadRows(){
+  if(!confirm('Delete all rows with "( Inv )" description so they get re-scraped?')) return;
+  const btn=document.getElementById('purge-btn');
+  const lbl=document.getElementById('purge-status');
+  btn.disabled=true; lbl.textContent='Purging…';
+  fetch('/admin/api/purge-bad-lego-rows',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token() }}'}})
+    .then(r=>r.ok?r.json():r.text().then(t=>{throw new Error(t.slice(0,200));}))
+    .then(d=>{ lbl.textContent=`Deleted ${d.deleted} bad rows (${d.errors} errors). Reload to see changes.`; btn.disabled=false; })
+    .catch(e=>{ lbl.textContent='Error: '+e.message; btn.disabled=false; });
+}
 
 // ── Live polling ─────────────────────────────────────────────────────────────
 (function(){

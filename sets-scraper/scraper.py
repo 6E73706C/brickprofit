@@ -106,14 +106,37 @@ def drop_proxy(session, row) -> None:
         log.warning("Failed to drop proxy %s:%s: %s", row.ip, row.port, exc)
 
 
+def is_valid_catalog_html(resp) -> bool:
+    """
+    Return False if BrickLink returned an error/captcha page instead of real
+    catalog data.  Called inside fetch_with_proxy before the response is
+    accepted, so a bad proxy can be dropped and a fresh one retried.
+    """
+    # Only inspect text responses (not streaming image downloads)
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/html" not in content_type:
+        return True
+    snippet = resp.text[:4096]
+    if "<title>BrickLink Error</title>" in snippet:
+        log.warning("BrickLink returned error page (proxy probably blocked).")
+        return False
+    if "catalogitem" not in snippet and "catType" not in snippet and "pg=" not in snippet:
+        # No catalog content at all – likely a redirect/login/block page
+        log.warning("BrickLink response contains no catalog content (possible block).")
+        return False
+    return True
+
+
 def fetch_with_proxy(url: str, session, *, params: dict | None = None,
-                     stream: bool = False, retries: int = 5) -> requests.Response:
+                     stream: bool = False, retries: int = 5,
+                     validate: bool = False) -> requests.Response:
     """
     GET *url* through a golden proxy.
     Each attempt uses a freshly-picked proxy (rotates every try).
-    On any failure the offending proxy is deleted from the DB and the next
-    proxy is tried.  Raises RuntimeError if all retries fail or no proxies
-    are left.  Never falls back to a direct connection.
+    On any failure OR failed validation the offending proxy is deleted from the
+    DB and the next proxy is tried.  Raises RuntimeError if all retries fail or
+    no proxies are left.  Never falls back to a direct connection.
+    Set validate=True for BrickLink catalog pages to detect error pages.
     """
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -128,6 +151,8 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
                 stream=stream,
             )
             resp.raise_for_status()
+            if validate and not is_valid_catalog_html(resp):
+                raise ValueError("Proxy returned a blocked/error page from BrickLink")
             return resp
         except Exception as exc:
             log.warning("Request attempt %d/%d via %s:%s failed: %s",
@@ -164,7 +189,8 @@ def fetch_page(year: int, pg: int, session) -> str | None:
         "pg": str(pg),
     }
     try:
-        resp = fetch_with_proxy(BRICKLINK_BASE, session, params=params, retries=3)
+        resp = fetch_with_proxy(BRICKLINK_BASE, session, params=params,
+                                retries=5, validate=True)
         return resp.text
     except RuntimeError as exc:
         log.warning("fetch_page year=%d pg=%d: %s", year, pg, exc)
