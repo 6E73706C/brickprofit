@@ -42,6 +42,17 @@ jobs:
           script: |
             docker volume rm brickprofit_grafana_data 2>/dev/null || true
 
+      - name: Label NODE0 so Grafana is always placed there
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          command_timeout: 2m
+          script: |
+            NODE0_ID=$(docker node ls --format '{{.ID}} {{.Self}}' | awk '$2=="true"{print $1}')
+            docker node update --label-add grafana=true "$NODE0_ID"
+
       - name: Redeploy stack from NODE0 (Grafana reinitialises fresh)
         uses: appleboy/ssh-action@v1
         with:
@@ -57,34 +68,27 @@ jobs:
               --resolve-image never \
               brickprofit
 
-      - name: Force-set Grafana password via CLI
+      - name: Force-set Grafana password via CLI (always on NODE0)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.NODE0_HOST }}
           username: root
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
-          command_timeout: 5m
+          command_timeout: 3m
           script: |
             set -a; source /opt/brickprofit/.env; set +a
-            # Wait up to 90s for Grafana container to be running
+            # Grafana is pinned to NODE0 via placement label, so container is always here
             for i in $(seq 1 18); do
               CID=$(docker ps -q -f name=brickprofit_grafana 2>/dev/null | head -1)
               [ -n "$CID" ] && break
-              echo "Waiting for Grafana container... ($i)"
-              sleep 5
+              echo "Waiting for Grafana container... ($i)"; sleep 5
             done
             CID=$(docker ps -q -f name=brickprofit_grafana 2>/dev/null | head -1)
-            if [ -z "$CID" ]; then
-              echo "ERROR: Grafana container not found after 90s" >&2
-              exit 1
-            fi
-            # Wait for Grafana HTTP to be ready
-            for i in $(seq 1 18); do
+            if [ -z "$CID" ]; then echo "ERROR: container not found" >&2; exit 1; fi
+            for i in $(seq 1 12); do
               STATUS=$(docker exec "$CID" wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -c '"database":"ok"' || true)
               [ "$STATUS" = "1" ] && break
-              echo "Waiting for Grafana HTTP... ($i)"
-              sleep 5
+              echo "Waiting for Grafana HTTP... ($i)"; sleep 5
             done
-            # Force-reset password for user ID=1 (always the initial admin regardless of username)
             docker exec "$CID" grafana cli admin reset-admin-password "${GRAFANA_PASSWORD}"
             echo "Grafana password reset done."
