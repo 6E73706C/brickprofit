@@ -78,10 +78,16 @@ def _drop_proxy(row) -> None:
 
 def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "object":
     """
-    GET *url* through a golden proxy, deleting the proxy on failure.
+    GET *url* through a golden proxy.
+    Only drops the proxy on connection-level failures (timeout, refused, SSL).
+    HTTP 4xx/5xx are server/resource issues – the proxy is fine, don't drop it.
     Raises RuntimeError if all retries fail or no proxies remain.  Never goes direct.
     """
     import requests as _req
+    from requests.exceptions import (
+        ConnectionError as _CE, Timeout as _TE,
+        ProxyError as _PE, SSLError as _SE,
+    )
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
         proxy_row, proxies = _pick_proxy()  # raises if table is empty
@@ -89,10 +95,15 @@ def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "ob
             resp = _req.get(url, proxies=proxies, timeout=20, stream=stream)
             resp.raise_for_status()
             return resp
-        except Exception as exc:
+        except (_CE, _TE, _PE, _SE) as exc:
+            # Connection-level failure – proxy is dead, drop it and retry
             _drop_proxy(proxy_row)
             last_exc = exc
             time.sleep(1)
+        except Exception as exc:
+            # HTTP error (4xx/5xx) or other – proxy is fine, resource issue – stop retrying
+            last_exc = exc
+            break
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 

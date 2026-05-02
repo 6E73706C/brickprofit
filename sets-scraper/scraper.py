@@ -154,12 +154,22 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
             if validate and not is_valid_catalog_html(resp):
                 raise ValueError("Proxy returned a blocked/error page from BrickLink")
             return resp
-        except Exception as exc:
-            log.warning("Request attempt %d/%d via %s:%s failed: %s",
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.ProxyError,
+                requests.exceptions.SSLError) as exc:
+            # Connection-level failure – proxy is dead, drop it and retry
+            log.warning("Request attempt %d/%d via %s:%s failed (connection): %s",
                         attempt, retries, proxy_row.ip, proxy_row.port, exc)
             drop_proxy(session, proxy_row)
             last_exc = exc
             time.sleep(3 * attempt)  # back-off: 3s, 6s, 9s …
+        except Exception as exc:
+            # HTTP error (4xx/5xx) or other – proxy is fine, resource issue – stop retrying
+            log.warning("Request attempt %d/%d via %s:%s failed (HTTP): %s",
+                        attempt, retries, proxy_row.ip, proxy_row.port, exc)
+            last_exc = exc
+            break
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
@@ -197,15 +207,21 @@ def fetch_page(year: int, pg: int, session) -> str | None:
         return None
 
 
+_INV_RE = re.compile(r'^\s*\(\s*Inv\s*\)\s*$', re.I)
+
+
 def parse_sets(html: str) -> list[dict]:
     """
     Parse catalog list HTML and return a list of dicts:
       { item_no, description, image_url, large_image_url }
 
-    BrickLink catalog table structure per row (3 <TD> siblings in a <TR>):
-      TD[0] – thumbnail <IMG SRC='https://img.bricklink.com/ItemImage/ST/0/ITEM.t1.png'>
-      TD[1] – item_no link + optional (Inv) link
-      TD[2] – <strong>Set name</strong><FONT ...>parts/year/category</FONT>
+    BrickLink catalog structure per row (≥3 <TD> siblings in a <TR>):
+      One TD has the item_no via a catalogitem.page?S= link (not the "(Inv)" link).
+      One TD has <strong> or <b> with the set name as description.
+      One TD has the thumbnail <IMG>.
+
+    We search all TDs rather than assuming fixed column positions, since
+    BrickLink has been observed with varying column order.
 
     Large image URL: replace /ST/ with /SL/ and strip the .t1 suffix:
       ST/0/10463-1.t1.png  →  SL/0/10463-1.png
@@ -219,30 +235,44 @@ def parse_sets(html: str) -> list[dict]:
         if len(tds) < 3:
             continue
 
-        # TD[1]: item_no from catalogitem.page link
-        link = tds[1].find("a", href=re.compile(r"catalogitem\.page\?S=", re.I))
-        if not link:
-            continue
-        item_no = link.get_text(strip=True)
+        # Find item_no: first catalogitem.page?S= link whose text is NOT "(Inv)"
+        item_no = None
+        for td in tds:
+            for a in td.find_all("a", href=re.compile(r"catalogitem\.page\?S=", re.I)):
+                text = a.get_text(strip=True)
+                if text and not _INV_RE.match(text):
+                    item_no = text
+                    break
+            if item_no:
+                break
+
         if not item_no or item_no in seen:
             continue
         seen.add(item_no)
 
-        # TD[2]: description from <strong> tag (the set name headline)
-        strong = tds[2].find("strong")
-        description = strong.get_text(strip=True) if strong else tds[2].get_text(strip=True).split("\n")[0].strip()
+        # Find description: first <strong> or <b> whose text is not "(Inv)"
+        description = ""
+        for td in tds:
+            for tag in td.find_all(["strong", "b"]):
+                t = tag.get_text(strip=True)
+                if t and not _INV_RE.match(t):
+                    description = t
+                    break
+            if description:
+                break
 
-        # TD[0]: thumbnail image
-        img = tds[0].find("img")
+        # Find image: first <img> in any TD
         image_url = ""
         large_image_url = ""
-        if img:
-            src = img.get("src", "")
-            if src.startswith("//"):
-                src = "https:" + src
-            image_url = src
-            # Derive large image: ST/0/ITEM.t1.png → SL/0/ITEM.png
-            large_image_url = src.replace("/ItemImage/ST/", "/ItemImage/SL/").replace(".t1.png", ".png")
+        for td in tds:
+            img = td.find("img")
+            if img:
+                src = img.get("src", "")
+                if src.startswith("//"):
+                    src = "https:" + src
+                image_url = src
+                large_image_url = src.replace("/ItemImage/ST/", "/ItemImage/SL/").replace(".t1.png", ".png")
+                break
 
         results.append({
             "item_no": item_no,
@@ -315,6 +345,11 @@ def prepare_statements(session):
 
 def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: datetime):
     """Insert or update a lego_set row."""
+    description = item["description"]
+    # Never write a parsing artifact "(Inv)" as the description
+    if _INV_RE.match(description or ""):
+        log.debug("Skipping (Inv) pseudo-row: year=%d item_no=%s", year, item.get("item_no", "?"))
+        return
     try:
         result = session.execute(
             """
@@ -322,12 +357,12 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
             VALUES (%s, %s, %s, %s, %s, %s)
             IF NOT EXISTS
             """,
-            (year, item["item_no"], item["description"], item["image_url"], now, now),
+            (year, item["item_no"], description, item["image_url"], now, now),
         )
         if not result.one().applied:
             session.execute(
                 update_stmt,
-                (now, item["description"], item["image_url"], year, item["item_no"]),
+                (now, description, item["image_url"], year, item["item_no"]),
             )
     except Exception as exc:
         log.debug("Upsert error %s/%s: %s", year, item["item_no"], exc)
