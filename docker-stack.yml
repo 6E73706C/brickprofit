@@ -136,7 +136,7 @@ services:
       - LEGO_IMAGES_DIR=/data/lego-images
       - DOCKER_HOST=tcp://docker-socket-proxy:2375
     volumes:
-      - lego_images:/data/lego-images:ro
+      - lego_images:/data/lego-images
     networks:
       - frontend_net
       - backend_net

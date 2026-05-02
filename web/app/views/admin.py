@@ -16,8 +16,27 @@ LEGO_IMAGES_DIR = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 PAGE_SIZE = 50
 
 # ── Image backfill ────────────────────────────────────────────────────────────
+import json
+
 _backfill_lock = threading.Lock()
-_backfill_state: dict = {"running": False, "done": 0, "total": 0, "errors": 0, "started_at": None}
+_BACKFILL_STATE_FILE = Path(os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")) / ".backfill_state.json"
+_EMPTY_STATE: dict = {"running": False, "done": 0, "total": 0, "errors": 0, "started_at": None}
+
+
+def _read_state() -> dict:
+    try:
+        return json.loads(_BACKFILL_STATE_FILE.read_text())
+    except Exception:
+        return dict(_EMPTY_STATE)
+
+
+def _write_state(state: dict) -> None:
+    try:
+        tmp = _BACKFILL_STATE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state))
+        tmp.rename(_BACKFILL_STATE_FILE)
+    except Exception:
+        pass
 
 
 def _safe_filename(item_no: str) -> str:
@@ -78,7 +97,6 @@ def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "ob
 
 
 def _backfill_worker(rows: list) -> None:
-    global _backfill_state
     images_dir = Path(LEGO_IMAGES_DIR)
     images_dir.mkdir(parents=True, exist_ok=True)
     done = 0
@@ -96,7 +114,9 @@ def _backfill_worker(rows: list) -> None:
             if dest.exists():
                 done += 1
                 with _backfill_lock:
-                    _backfill_state["done"] = done
+                    state = _read_state()
+                    state["done"] = done
+                    _write_state(state)
                 continue
             tmp = dest.with_suffix(".tmp")
             try:
@@ -105,22 +125,26 @@ def _backfill_worker(rows: list) -> None:
                     for chunk in resp.iter_content(65536):
                         fh.write(chunk)
                 tmp.rename(dest)
-            except RuntimeError as exc:
+            except RuntimeError:
                 errors += 1
                 if tmp.exists():
                     tmp.unlink(missing_ok=True)
             done += 1
             with _backfill_lock:
-                _backfill_state["done"] = done
-                _backfill_state["errors"] = errors
+                state = _read_state()
+                state["done"] = done
+                state["errors"] = errors
+                _write_state(state)
             time.sleep(0.1)
         except Exception:
             errors += 1
             done += 1
     with _backfill_lock:
-        _backfill_state["running"] = False
-        _backfill_state["done"] = done
-        _backfill_state["errors"] = errors
+        state = _read_state()
+        state["running"] = False
+        state["done"] = done
+        state["errors"] = errors
+        _write_state(state)
 
 
 def _page() -> int:
@@ -648,10 +672,10 @@ def api_containers_json():
 @bp.post("/api/backfill-lego-images")
 @login_required
 def api_backfill_lego_images():
-    global _backfill_state
     with _backfill_lock:
-        if _backfill_state["running"]:
-            return jsonify({"status": "already_running", **_backfill_state})
+        state = _read_state()
+        if state.get("running"):
+            return jsonify({"status": "already_running", **state})
     # collect all rows with an image URL
     from datetime import datetime, timezone
     session = get_session()
@@ -666,21 +690,22 @@ def api_backfill_lego_images():
         except Exception:
             pass
     rows_with_url = [r for r in all_rows if r.image_url]
+    new_state = {
+        "running": True,
+        "done": 0,
+        "total": len(rows_with_url),
+        "errors": 0,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
     with _backfill_lock:
-        _backfill_state = {
-            "running": True,
-            "done": 0,
-            "total": len(rows_with_url),
-            "errors": 0,
-            "started_at": datetime.now(timezone.utc).isoformat(),
-        }
+        _write_state(new_state)
     t = threading.Thread(target=_backfill_worker, args=(rows_with_url,), daemon=True)
     t.start()
-    return jsonify({"status": "started", **_backfill_state})
+    return jsonify({"status": "started", **new_state})
 
 
 @bp.get("/api/backfill-lego-images")
 @login_required
 def api_backfill_lego_images_status():
-    with _backfill_lock:
-        return jsonify({"status": "running" if _backfill_state["running"] else "idle", **_backfill_state})
+    state = _read_state()
+    return jsonify({"status": "running" if state.get("running") else "idle", **state})
