@@ -50,7 +50,7 @@ jobs:
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           command_timeout: 2m
           script: |
-            NODE0_ID=$(docker node ls --format '{{.ID}} {{.Self}}' | awk '$2=="true"{print $1}')
+            NODE0_ID=$(docker info --format '{{.Swarm.NodeID}}')
             docker node update --label-add grafana=true "$NODE0_ID"
 
       - name: Redeploy stack from NODE0 (Grafana reinitialises fresh)
