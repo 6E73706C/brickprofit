@@ -1,0 +1,57 @@
+name: Wipe Grafana Volume
+
+on:
+  workflow_dispatch:
+
+jobs:
+  wipe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scale down Grafana and remove volume on NODE0
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          command_timeout: 3m
+          script: |
+            docker service scale brickprofit_grafana=0 2>/dev/null || true
+            sleep 10
+            docker volume rm brickprofit_grafana_data 2>/dev/null || true
+
+      - name: Remove volume on NODE1
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.NODE1_HOST }}
+          username: root
+          password: ${{ secrets.NODE1_SSH_PASSWORD }}
+          command_timeout: 3m
+          script: |
+            docker volume rm brickprofit_grafana_data 2>/dev/null || true
+
+      - name: Remove volume on NODE2
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.NODE2_HOST }}
+          username: root
+          password: ${{ secrets.NODE2_SSH_PASSWORD }}
+          command_timeout: 3m
+          script: |
+            docker volume rm brickprofit_grafana_data 2>/dev/null || true
+
+      - name: Redeploy stack from NODE0 (Grafana reinitialises fresh)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.NODE0_HOST }}
+          username: root
+          password: ${{ secrets.NODE0_SSH_PASSWORD }}
+          command_timeout: 10m
+          script: |
+            set -a; source /opt/brickprofit/.env; set +a
+            docker stack deploy \
+              --compose-file /opt/brickprofit/docker-stack.yml \
+              --resolve-image never \
+              brickprofit
