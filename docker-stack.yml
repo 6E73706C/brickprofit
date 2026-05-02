@@ -463,9 +463,6 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
-      placement:
-        constraints:
-          - node.labels.grafana == true
 
   # ── Grafana ───────────────────────────────────────────────────────────────
   grafana:
@@ -487,3 +484,6 @@ services:
       replicas: 1
       restart_policy:
         condition: on-failure
+      placement:
+        constraints:
+          - node.labels.grafana == true

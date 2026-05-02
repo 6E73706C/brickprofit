@@ -50,8 +50,12 @@ jobs:
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           command_timeout: 2m
           script: |
-            NODE0_ID=$(docker info --format '{{.Swarm.NodeID}}')
+            NODE0_ID=$(docker info 2>/dev/null | awk '/NodeID/{print $2}')
+            echo "Node ID detected: '${NODE0_ID}'"
+            if [ -z "$NODE0_ID" ]; then echo "ERROR: could not detect node ID" >&2; exit 1; fi
             docker node update --label-add grafana=true "$NODE0_ID"
+            echo "Label applied. Verifying:"
+            docker node inspect "$NODE0_ID" --format '{{json .Spec.Labels}}'
 
       - name: Redeploy stack from NODE0 (Grafana reinitialises fresh)
         uses: appleboy/ssh-action@v1
