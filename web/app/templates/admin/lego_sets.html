@@ -47,7 +47,7 @@
       </thead>
       <tbody id="lego-tbody">
         {% for r in rows %}
-        <tr>
+        <tr data-item="{{ r.item_no }}">
           <td>
             {% if r.image_url %}
             <img src="/admin/media/lego/{{ r.item_no }}.png"
@@ -173,37 +173,109 @@ function purgeBadRows(){
 (function(){
   const yr='{{ year_filter }}';
   const pg={{ page }};
+
+  function rowHtml(r){
+    const item_no=r.item_no||'';
+    const name=(r.description||item_no).replace(/"/g,'&quot;');
+    const localSrc=item_no ? `/admin/media/lego/${item_no}.png` : '';
+    const img=item_no
+      ? `<img src="${localSrc}" alt="${item_no}" data-large="${localSrc}" data-name="${name}" title="Click for full size" data-bs-toggle="modal" data-bs-target="#legoImgModal" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
+      : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>';
+    return {img, item_no, description: r.description||'—', year: r.year, first_seen: r.first_seen, last_seen: r.last_seen};
+  }
+
+  function patchTbody(tb, rows){
+    const existing = Array.from(tb.querySelectorAll('tr[data-item]'));
+
+    // Build map of currently rendered rows keyed by item_no
+    const existingMap = {};
+    existing.forEach(tr => { existingMap[tr.dataset.item] = tr; });
+
+    // Build ordered list of item_nos in new data
+    const newKeys = rows.map(r => r.item_no||'');
+
+    // Check if order/count changed – if so do a keyed reconcile, else patch in place
+    const existingKeys = existing.map(tr => tr.dataset.item);
+    const orderChanged = newKeys.join(',') !== existingKeys.join(',');
+
+    if(orderChanged){
+      // Re-order by rebuilding only missing rows then reinserting in correct order
+      const fragment = document.createDocumentFragment();
+      rows.forEach(r => {
+        const d = rowHtml(r);
+        let tr = existingMap[d.item_no];
+        if(!tr){
+          tr = document.createElement('tr');
+          tr.dataset.item = d.item_no;
+          tr.innerHTML = buildCells(d);
+        } else {
+          patchCells(tr, d);
+        }
+        fragment.appendChild(tr);
+      });
+      tb.innerHTML = '';
+      tb.appendChild(fragment);
+    } else {
+      // Same rows in same order – only patch changed cells, never touch img src
+      rows.forEach((r, i) => {
+        const tr = existing[i];
+        if(tr) patchCells(tr, rowHtml(r));
+      });
+    }
+  }
+
+  function buildCells(d){
+    return `<td>${d.img}</td>
+      <td><span class="mono">${d.item_no}</span></td>
+      <td style="max-width:420px;white-space:normal;">${d.description}</td>
+      <td><span class="badge b-green">${d.year}</span></td>
+      <td class="dim">${d.first_seen}</td>
+      <td class="dim">${d.last_seen}</td>`;
+  }
+
+  function patchCells(tr, d){
+    const cells = tr.children;
+    if(!cells.length){
+      tr.innerHTML = buildCells(d);
+      return;
+    }
+    // cell[0] = image: only add img if cell is currently empty (never replace)
+    const imgCell = cells[0];
+    if(!imgCell.querySelector('img') && d.item_no){
+      imgCell.innerHTML = d.img;
+    }
+    // cell[1] = item_no (never changes)
+    // cell[2] = description
+    const descCell = cells[2];
+    if(descCell && descCell.textContent !== d.description) descCell.textContent = d.description;
+    // cell[3] = year (never changes)
+    // cell[4] = first_seen (never changes)
+    // cell[5] = last_seen
+    const lsCell = cells[5];
+    if(lsCell && lsCell.textContent !== d.last_seen) lsCell.textContent = d.last_seen;
+  }
+
   function refresh(){
     fetch('/admin/api/lego-sets?year='+yr+'&page='+pg)
       .then(r=>r.json()).then(d=>{
         const tot=document.getElementById('lego-total');
-        if(tot) tot.textContent=d.total;
+        if(tot && tot.textContent !== String(d.total)) tot.textContent=d.total;
         const tb=document.getElementById('lego-tbody');
         if(!tb||!d.rows) return;
         if(!d.rows.length){
           tb.innerHTML='<tr><td colspan="6"><div class="bp-empty"><i class="bi bi-boxes"></i>No LEGO sets yet &mdash; scraper is running.</div></td></tr>';
         } else {
-          tb.innerHTML=d.rows.map(r=>{
-            const item_no=r.item_no||'';
-            const name=(r.description||item_no).replace(/"/g,'&quot;');
-            const localSrc=item_no ? `/admin/media/lego/${item_no}.png` : '';
-            const img=item_no
-              ? `<img src="${localSrc}" alt="${item_no}" data-large="${localSrc}" data-name="${name}" title="Click for full size" data-bs-toggle="modal" data-bs-target="#legoImgModal" style="width:52px;height:52px;object-fit:contain;border-radius:6px;background:#1e293b;cursor:zoom-in;">`
-              : '<span class="dim"><i class="bi bi-image" style="font-size:1.4rem;"></i></span>';
-            return `<tr>
-              <td>${img}</td>
-              <td><span class="mono">${r.item_no}</span></td>
-              <td style="max-width:420px;white-space:normal;">${r.description||'—'}</td>
-              <td><span class="badge b-green">${r.year}</span></td>
-              <td class="dim">${r.first_seen}</td>
-              <td class="dim">${r.last_seen}</td>
-            </tr>`;
-          }).join('');
+          // Ensure rows have data-item attribute (first run after server-render)
+          const existing = tb.querySelectorAll('tr:not([data-item])');
+          existing.forEach((tr, i) => {
+            if(d.rows[i]) tr.dataset.item = d.rows[i].item_no||'';
+          });
+          patchTbody(tb, d.rows);
         }
         document.getElementById('last-updated').textContent=new Date().toLocaleTimeString();
       }).catch(()=>{});
   }
-  setInterval(refresh,5000);
+  setInterval(refresh, 30000); // 30s is enough – scraper runs hourly
   refresh();
 })();
 </script>{% endblock %}
