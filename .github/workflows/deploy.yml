@@ -469,9 +469,8 @@ jobs:
             P=$(echo "$H_P" | cut -d' ' -f2)
             GID=$(s "$H" "$P" "docker ps --filter name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
             if [ -n "$GID" ]; then
-              GRAFANA_PASSWORD=$(s "$H" "$P" "grep '^GRAFANA_PASSWORD=' /opt/brickprofit/.env | cut -d= -f2-")
               # Force-reset built-in admin password every deploy for deterministic login.
-              s "$H" "$P" "docker exec $GID grafana cli admin reset-admin-password '${GRAFANA_PASSWORD}'" \
+              s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\"" \
                 && echo "Grafana password synced on $H." || echo "Grafana password sync failed (non-fatal)"
               break
             fi
