@@ -46,6 +46,7 @@ REQUEST_TIMEOUT    = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
 DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5"))  # polite crawl delay
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 DETAIL_LOOKUP_MAX_PER_PAGE = int(os.environ.get("DETAIL_LOOKUP_MAX_PER_PAGE", "25"))
+METADATA_LOOKUP_MAX_PER_CYCLE = int(os.environ.get("METADATA_LOOKUP_MAX_PER_CYCLE", "400"))
 ALLOW_DIRECT_BRICKLINK_FALLBACK = os.environ.get("ALLOW_DIRECT_BRICKLINK_FALLBACK", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
@@ -638,6 +639,80 @@ def purge_inv_rows(session) -> int:
     return deleted
 
 
+def backfill_missing_metadata(session) -> tuple[int, int, int]:
+    """
+    Recover missing descriptions/image URLs from item detail pages using item_no.
+    Runs every cycle and is capped to avoid unbounded work on large datasets.
+    Returns (lookups, descriptions_updated, image_urls_updated).
+    """
+    years = target_years()
+    now = datetime.now(timezone.utc)
+    lookups = 0
+    desc_updates = 0
+    image_updates = 0
+
+    for y in years:
+        if lookups >= METADATA_LOOKUP_MAX_PER_CYCLE:
+            break
+        try:
+            rows = list(session.execute(
+                "SELECT item_no, description, image_url FROM lego_sets WHERE year = %s", (y,)
+            ))
+            for r in rows:
+                if lookups >= METADATA_LOOKUP_MAX_PER_CYCLE:
+                    break
+                if not r.item_no:
+                    continue
+
+                current_desc = (r.description or "").strip()
+                current_img = (r.image_url or "").strip()
+                need_desc = (not current_desc) or bool(_INV_RE.match(current_desc))
+                need_img = not current_img
+                if not need_desc and not need_img:
+                    continue
+
+                details = fetch_item_details(r.item_no, session)
+                lookups += 1
+                new_desc = (details.get("description") or "").strip()
+                new_img = (details.get("image_url") or "").strip()
+
+                updated_any = False
+                if need_desc and new_desc and not _INV_RE.match(new_desc):
+                    session.execute(
+                        "UPDATE lego_sets SET description = %s, last_seen = %s "
+                        "WHERE year = %s AND item_no = %s",
+                        (new_desc, now, y, r.item_no),
+                    )
+                    desc_updates += 1
+                    updated_any = True
+
+                if need_img and new_img:
+                    session.execute(
+                        "UPDATE lego_sets SET image_url = %s, last_seen = %s "
+                        "WHERE year = %s AND item_no = %s",
+                        (new_img, now, y, r.item_no),
+                    )
+                    image_updates += 1
+                    updated_any = True
+
+                if updated_any:
+                    item = {
+                        "item_no": r.item_no,
+                        "large_image_url": details.get("large_image_url", ""),
+                        "image_url": new_img or current_img,
+                    }
+                    download_image(item, session)
+        except Exception as exc:
+            log.warning("backfill_missing_metadata year=%d: %s", y, exc)
+
+    if lookups:
+        log.info(
+            "Metadata backfill: lookups=%d, descriptions updated=%d, image URLs updated=%d",
+            lookups, desc_updates, image_updates,
+        )
+    return lookups, desc_updates, image_updates
+
+
 def backfill_missing_images(session) -> int:
     """
     After each scrape cycle, scan every row in the target_years range that has
@@ -658,11 +733,13 @@ def backfill_missing_images(session) -> int:
                 if _find_existing_image_path(r.item_no):
                     skipped += 1
                     continue
-                large_url = _to_large_image_url(r.image_url)
+                details = fetch_item_details(r.item_no, session)
+                large_url = details.get("large_image_url") or _to_large_image_url(r.image_url)
+                preferred_image_url = details.get("image_url") or _normalize_image_url(r.image_url)
                 item = {
                     "item_no": r.item_no,
                     "large_image_url": large_url,
-                    "image_url": _normalize_image_url(r.image_url),
+                    "image_url": preferred_image_url,
                 }
                 download_image(item, session)
                 # Check if the image was successfully downloaded
@@ -696,7 +773,10 @@ def run_once(session, update_stmt) -> None:
     if grand_total > 0:
         purge_inv_rows(session)
 
-    # 3. Download any images that are still missing
+    # 3. Recover missing description/image metadata even when catalog discovery is flaky.
+    backfill_missing_metadata(session)
+
+    # 4. Download any images that are still missing
     backfill_missing_images(session)
 
 
