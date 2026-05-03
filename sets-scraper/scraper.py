@@ -631,7 +631,8 @@ def backfill_missing_images(session) -> int:
                 large_url = _to_large_image_url(r.image_url)
                 item = {"item_no": r.item_no, "large_image_url": large_url}
                 download_image(item, session)
-                if os.path.exists(dest):
+                # Check if the image was successfully downloaded
+                if _find_existing_image_path(r.item_no):
                     downloaded += 1
         except Exception as exc:
             log.warning("backfill_missing_images year=%d: %s", y, exc)
