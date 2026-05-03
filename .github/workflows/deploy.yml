@@ -177,12 +177,21 @@ jobs:
             H=$(echo "$H_P" | cut -d' ' -f1)
             P=$(echo "$H_P" | cut -d' ' -f2)
             s "$H" "$P" "
-              mountpoint -q /mnt/gluster/lego-images \
-                || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+              mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
+              if mountpoint -q /mnt/gluster/lego-images; then
+                ls /mnt/gluster/lego-images >/dev/null 2>&1 \
+                  || { umount -l /mnt/gluster/lego-images || true; mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images; }
+              else
+                mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+              fi
               grep -qF 'lego-images' /etc/fstab \
                 || echo 'localhost:/lego-images /mnt/gluster/lego-images glusterfs defaults,_netdev 0 0' >> /etc/fstab
-              mountpoint -q /mnt/gluster/grafana-data \
-                || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+              if mountpoint -q /mnt/gluster/grafana-data; then
+                ls /mnt/gluster/grafana-data >/dev/null 2>&1 \
+                  || { umount -l /mnt/gluster/grafana-data || true; mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data; }
+              else
+                mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+              fi
               grep -qF 'grafana-data' /etc/fstab \
                 || echo 'localhost:/grafana-data /mnt/gluster/grafana-data glusterfs defaults,_netdev 0 0' >> /etc/fstab
             "
@@ -202,8 +211,17 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /mnt/gluster/lego-images
-            mkdir -p /mnt/gluster/grafana-data
+            if mountpoint -q /mnt/gluster/lego-images; then
+              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
+            fi
+            if mountpoint -q /mnt/gluster/grafana-data; then
+              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
+            fi
+            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
+            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+            ls /mnt/gluster/lego-images >/dev/null
+            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -226,8 +244,17 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /mnt/gluster/lego-images
-            mkdir -p /mnt/gluster/grafana-data
+            if mountpoint -q /mnt/gluster/lego-images; then
+              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
+            fi
+            if mountpoint -q /mnt/gluster/grafana-data; then
+              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
+            fi
+            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
+            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+            ls /mnt/gluster/lego-images >/dev/null
+            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -250,8 +277,17 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            mkdir -p /mnt/gluster/lego-images
-            mkdir -p /mnt/gluster/grafana-data
+            if mountpoint -q /mnt/gluster/lego-images; then
+              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
+            fi
+            if mountpoint -q /mnt/gluster/grafana-data; then
+              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
+            fi
+            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
+            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
+            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+            ls /mnt/gluster/lego-images >/dev/null
+            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
