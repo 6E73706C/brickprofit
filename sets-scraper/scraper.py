@@ -410,11 +410,76 @@ def scrape_page(session, update_stmt, year: int, pg: int, prefetched_html: str |
     return len(sets)
 
 
+def purge_inv_rows(session) -> int:
+    """
+    Delete all lego_sets rows whose description is the '(Inv)' parsing artefact.
+    Called before each scrape cycle so those rows are re-scraped with correct data.
+    Scans the full target_years range.
+    """
+    years = target_years()
+    deleted = 0
+    for y in years:
+        try:
+            rows = list(session.execute(
+                "SELECT year, item_no, description FROM lego_sets WHERE year = %s", (y,)
+            ))
+            for r in rows:
+                if r.description and _INV_RE.match(r.description):
+                    session.execute(
+                        "DELETE FROM lego_sets WHERE year = %s AND item_no = %s",
+                        (r.year, r.item_no),
+                    )
+                    deleted += 1
+        except Exception as exc:
+            log.warning("purge_inv_rows year=%d: %s", y, exc)
+    if deleted:
+        log.info("Purged %d (Inv) rows — they will be re-scraped this cycle.", deleted)
+    return deleted
+
+
+def backfill_missing_images(session) -> int:
+    """
+    After each scrape cycle, scan every row in the target_years range that has
+    an image_url but no local image file, and download it via a golden proxy.
+    This ensures images are downloaded even if they were missed in a previous cycle.
+    """
+    years = target_years()
+    downloaded = 0
+    skipped = 0
+    for y in years:
+        try:
+            rows = list(session.execute(
+                "SELECT item_no, image_url FROM lego_sets WHERE year = %s", (y,)
+            ))
+            for r in rows:
+                if not r.item_no or not r.image_url:
+                    continue
+                safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", r.item_no) + ".png"
+                dest = os.path.join(IMAGE_DIR, safe_name)
+                if os.path.exists(dest):
+                    skipped += 1
+                    continue
+                large_url = (r.image_url
+                             .replace("/ItemImage/ST/", "/ItemImage/SL/")
+                             .replace(".t1.png", ".png"))
+                item = {"item_no": r.item_no, "large_image_url": large_url}
+                download_image(item, session)
+                if os.path.exists(dest):
+                    downloaded += 1
+        except Exception as exc:
+            log.warning("backfill_missing_images year=%d: %s", y, exc)
+    log.info("Image backfill: %d downloaded, %d already present.", downloaded, skipped)
+    return downloaded
+
+
 def run_once(session, update_stmt) -> None:
     years = target_years()
     log.info("═══ Discovery pass for years: %s ═══", years)
 
-    # Discovery: learn total pages per year (page 1 fetched here, reused below)
+    # 1. Purge stale (Inv) rows so they get re-scraped with correct descriptions
+    purge_inv_rows(session)
+
+    # 2. Scrape all pages
     all_pairs = discover_pages(session, years)
     log.info("Total (year, page) pairs to scrape: %d – order randomised.", len(all_pairs))
 
@@ -426,6 +491,9 @@ def run_once(session, update_stmt) -> None:
         time.sleep(DELAY_BETWEEN_PAGES)
 
     log.info("Cycle complete. %d total set records upserted.", grand_total)
+
+    # 3. Download any images that are still missing after the scrape pass
+    backfill_missing_images(session)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

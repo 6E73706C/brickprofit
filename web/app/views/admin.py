@@ -77,25 +77,6 @@ def _drop_proxy(row) -> None:
         pass
 
 
-def _fetch_image_direct(url: str, *, stream: bool = False) -> "object":
-    """
-    Download an image URL directly (no proxy).  Used for BrickLink CDN
-    which is a static asset host, not the scraping target.
-    """
-    import requests as _req
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Referer": "https://www.bricklink.com/",
-    }
-    resp = _req.get(url, headers=headers, timeout=30, stream=stream)
-    resp.raise_for_status()
-    return resp
-
-
 def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "object":
     """
     GET *url* through a golden proxy.
@@ -165,8 +146,7 @@ def _backfill_worker(rows: list) -> None:
                     continue
                 tmp = dest.with_suffix(".tmp")
                 try:
-                    # Download directly from CDN – no proxy needed for static assets
-                    resp = _fetch_image_direct(large_url, stream=True)
+                    resp = _fetch_via_proxy(large_url, stream=True, retries=3)
                     with open(tmp, "wb") as fh:
                         for chunk in resp.iter_content(65536):
                             fh.write(chunk)
