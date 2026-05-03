@@ -211,17 +211,6 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            if mountpoint -q /mnt/gluster/lego-images; then
-              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
-            fi
-            if mountpoint -q /mnt/gluster/grafana-data; then
-              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
-            fi
-            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
-            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
-            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
-            ls /mnt/gluster/lego-images >/dev/null
-            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -244,17 +233,6 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            if mountpoint -q /mnt/gluster/lego-images; then
-              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
-            fi
-            if mountpoint -q /mnt/gluster/grafana-data; then
-              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
-            fi
-            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
-            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
-            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
-            ls /mnt/gluster/lego-images >/dev/null
-            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -277,17 +255,6 @@ jobs:
           command_timeout: 30m
           script: |
             set -euo pipefail
-            if mountpoint -q /mnt/gluster/lego-images; then
-              ls /mnt/gluster/lego-images >/dev/null 2>&1 || umount -l /mnt/gluster/lego-images || true
-            fi
-            if mountpoint -q /mnt/gluster/grafana-data; then
-              ls /mnt/gluster/grafana-data >/dev/null 2>&1 || umount -l /mnt/gluster/grafana-data || true
-            fi
-            mkdir -p /mnt/gluster/lego-images /mnt/gluster/grafana-data
-            mountpoint -q /mnt/gluster/lego-images || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
-            mountpoint -q /mnt/gluster/grafana-data || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
-            ls /mnt/gluster/lego-images >/dev/null
-            ls /mnt/gluster/grafana-data >/dev/null
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
