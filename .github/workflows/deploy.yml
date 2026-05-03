@@ -238,7 +238,6 @@ jobs:
             docker build --tag "brickprofit-prometheus:latest" ./monitoring/prometheus
 
   build-node2:
-                docker build --tag "brickprofit-prometheus:latest" ./monitoring/prometheus
     runs-on: ubuntu-latest
     needs: setup-swarm
     steps:
@@ -260,6 +259,7 @@ jobs:
             docker build --tag "brickprofit-proxy-fetcher:latest" ./proxy-fetcher
             docker build --tag "brickprofit-proxy-tester:latest" ./proxy-tester
             docker build --tag "brickprofit-sets-scraper:latest" ./sets-scraper
+            docker build --tag "brickprofit-prometheus:latest" ./monitoring/prometheus
 
   # ── Step 3: Deploy stack from manager ──────────────────────────────────────
   deploy:
