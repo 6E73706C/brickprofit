@@ -46,6 +46,7 @@ REQUEST_TIMEOUT    = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
 DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5"))  # polite crawl delay
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 DETAIL_LOOKUP_MAX_PER_PAGE = int(os.environ.get("DETAIL_LOOKUP_MAX_PER_PAGE", "25"))
+ALLOW_DIRECT_BRICKLINK_FALLBACK = os.environ.get("ALLOW_DIRECT_BRICKLINK_FALLBACK", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
 BRICKLINK_ITEM_BASE = "https://www.bricklink.com/v2/catalog/catalogitem.page"
@@ -180,6 +181,23 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
                         attempt, retries, proxy_row.ip, proxy_row.port, exc)
             last_exc = exc
             break
+    if ALLOW_DIRECT_BRICKLINK_FALLBACK:
+        try:
+            log.warning("Falling back to direct request for %s after proxy failures.", url)
+            resp = requests.get(
+                url,
+                params=params,
+                headers=HEADERS,
+                timeout=REQUEST_TIMEOUT,
+                stream=stream,
+            )
+            resp.raise_for_status()
+            if validate and not is_valid_catalog_html(resp):
+                raise ValueError("Direct request returned blocked/error page from BrickLink")
+            return resp
+        except Exception as exc:
+            last_exc = exc
+
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
@@ -439,29 +457,41 @@ def get_total_pages(html: str) -> int:
 def download_image(item: dict, session) -> None:
     """Download the large image for a set to IMAGE_DIR via a golden proxy."""
     large_url = item.get("large_image_url", "")
+    image_url = item.get("image_url", "")
     item_no   = item.get("item_no", "")
-    if not large_url or not item_no:
+    if not item_no:
         return
     if _find_existing_image_path(item_no):
         return  # already downloaded
-    dest = _build_image_dest_path(item_no, large_url)
+    candidates = []
+    if large_url:
+        candidates.append(large_url)
+    if image_url and image_url not in candidates:
+        candidates.append(image_url)
+    if not candidates:
+        return
+
     os.makedirs(IMAGE_DIR, exist_ok=True)
-    tmp = dest + ".tmp"
-    try:
-        resp = fetch_with_proxy(large_url, session, stream=True, retries=5)
-        with open(tmp, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                f.write(chunk)
-        os.replace(tmp, dest)
-        log.debug("Downloaded image for %s", item_no)
-    except RuntimeError as exc:
-        log.warning("Failed to download image for %s: %s", item_no, exc)
-    finally:
-        if os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+    for candidate_url in candidates:
+        dest = _build_image_dest_path(item_no, candidate_url)
+        tmp = dest + ".tmp"
+        try:
+            resp = fetch_with_proxy(candidate_url, session, stream=True, retries=5)
+            with open(tmp, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            os.replace(tmp, dest)
+            log.debug("Downloaded image for %s from %s", item_no, candidate_url)
+            return
+        except RuntimeError as exc:
+            log.warning("Failed image URL for %s (%s): %s", item_no, candidate_url, exc)
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+    log.warning("Failed to download image for %s using all candidate URLs.", item_no)
 
 
 # ── Cassandra writes ──────────────────────────────────────────────────────────
@@ -629,7 +659,11 @@ def backfill_missing_images(session) -> int:
                     skipped += 1
                     continue
                 large_url = _to_large_image_url(r.image_url)
-                item = {"item_no": r.item_no, "large_image_url": large_url}
+                item = {
+                    "item_no": r.item_no,
+                    "large_image_url": large_url,
+                    "image_url": _normalize_image_url(r.image_url),
+                }
                 download_image(item, session)
                 # Check if the image was successfully downloaded
                 if _find_existing_image_path(r.item_no):

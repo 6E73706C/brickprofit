@@ -290,6 +290,17 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
+            GRAFANA_CID=""
+            for i in $(seq 1 30); do
+              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
+              if [ -n "$GRAFANA_CID" ]; then
+                break
+              fi
+              sleep 5
+            done
+            if [ -n "$GRAFANA_CID" ]; then
+              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
+            fi
 
       - name: Deploy stack from NODE1 (fallback)
         id: deploy_node1
@@ -315,6 +326,17 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
+            GRAFANA_CID=""
+            for i in $(seq 1 30); do
+              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
+              if [ -n "$GRAFANA_CID" ]; then
+                break
+              fi
+              sleep 5
+            done
+            if [ -n "$GRAFANA_CID" ]; then
+              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
+            fi
 
       - name: Deploy stack from NODE2 (fallback)
         if: steps.deploy_node0.outcome != 'success' && steps.deploy_node1.outcome != 'success'
@@ -338,6 +360,17 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
+            GRAFANA_CID=""
+            for i in $(seq 1 30); do
+              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
+              if [ -n "$GRAFANA_CID" ]; then
+                break
+              fi
+              sleep 5
+            done
+            if [ -n "$GRAFANA_CID" ]; then
+              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
+            fi
 
       - name: Init Cassandra schema
         env:
