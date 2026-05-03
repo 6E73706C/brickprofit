@@ -415,10 +415,32 @@ def upsert_set(session, insert_stmt, update_stmt, year: int, item: dict, now: da
             (year, item["item_no"], description, item["image_url"], now, now),
         )
         if not result.one().applied:
-            session.execute(
-                update_stmt,
-                (now, description, item["image_url"], year, item["item_no"]),
-            )
+            # Row already exists – only overwrite fields that have better data.
+            # Never replace a non-empty description/image_url with an empty value.
+            image_url = item["image_url"]
+            if description and image_url:
+                session.execute(
+                    update_stmt,
+                    (now, description, image_url, year, item["item_no"]),
+                )
+            elif description:
+                session.execute(
+                    "UPDATE lego_sets SET last_seen = %s, description = %s "
+                    "WHERE year = %s AND item_no = %s",
+                    (now, description, year, item["item_no"]),
+                )
+            elif image_url:
+                session.execute(
+                    "UPDATE lego_sets SET last_seen = %s, image_url = %s "
+                    "WHERE year = %s AND item_no = %s",
+                    (now, image_url, year, item["item_no"]),
+                )
+            else:
+                session.execute(
+                    "UPDATE lego_sets SET last_seen = %s "
+                    "WHERE year = %s AND item_no = %s",
+                    (now, year, item["item_no"]),
+                )
     except Exception as exc:
         log.debug("Upsert error %s/%s: %s", year, item["item_no"], exc)
 
@@ -529,10 +551,7 @@ def run_once(session, update_stmt) -> None:
     years = target_years()
     log.info("═══ Discovery pass for years: %s ═══", years)
 
-    # 1. Purge stale (Inv) rows so they get re-scraped with correct descriptions
-    purge_inv_rows(session)
-
-    # 2. Scrape all pages
+    # 1. Scrape all pages
     all_pairs = discover_pages(session, years)
     log.info("Total (year, page) pairs to scrape: %d – order randomised.", len(all_pairs))
 
@@ -545,7 +564,12 @@ def run_once(session, update_stmt) -> None:
 
     log.info("Cycle complete. %d total set records upserted.", grand_total)
 
-    # 3. Download any images that are still missing after the scrape pass
+    # 2. Only purge (Inv) rows when we successfully scraped replacement data.
+    #    If BrickLink was unreachable this cycle, keep existing rows intact.
+    if grand_total > 0:
+        purge_inv_rows(session)
+
+    # 3. Download any images that are still missing
     backfill_missing_images(session)
 
 

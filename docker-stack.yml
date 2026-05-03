@@ -454,12 +454,18 @@ services:
 
   # ── Prometheus ────────────────────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+      image: brickprofit-prometheus:latest
+      build:
+        context: ./monitoring/prometheus
+      environment:
+        - NODE0_HOST=${NODE0_HOST}
+        - NODE1_HOST=${NODE1_HOST}
+        - NODE2_HOST=${NODE2_HOST}
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml.tmpl:ro
       - prometheus_data:/prometheus
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--config.file=/tmp/prometheus.yml"
       - "--storage.tsdb.retention.time=30d"
     networks:
       - monitoring_net
