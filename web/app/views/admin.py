@@ -42,10 +42,30 @@ def _write_state(state: dict) -> None:
 
 
 _IMAGE_VARIANT_RE = re.compile(r"\.t\d+\.(png|jpe?g|gif)$", re.I)
+_IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|webp|gif)$", re.I)
 
 
-def _safe_filename(item_no: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
+def _safe_filename(item_no: str, ext: str = ".png") -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ext
+
+
+def _image_ext_from_url(url: str) -> str:
+    m = _IMAGE_EXT_RE.search((url or "").split("?")[0])
+    if not m:
+        return ".png"
+    ext = m.group(1).lower()
+    if ext == "jpg":
+        ext = "jpeg"
+    return "." + ext
+
+
+def _find_existing_image_path(item_no: str) -> Path | None:
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", item_no)
+    for ext in (".png", ".jpeg", ".jpg", ".webp", ".gif"):
+        p = Path(LEGO_IMAGES_DIR) / f"{base}{ext}"
+        if p.exists():
+            return p
+    return None
 
 
 def _normalize_image_url(src: str) -> str:
@@ -163,15 +183,16 @@ def _backfill_worker(rows: list) -> None:
                 if not large_url:
                     done += 1
                     continue
-                dest = images_dir / _safe_filename(item_no)
-                if dest.exists():
+                existing = _find_existing_image_path(item_no)
+                if existing is not None:
                     done += 1
                     with _backfill_lock:
                         state = _read_state()
                         state["done"] = done
                         _write_state(state)
                     continue
-                tmp = dest.with_suffix(".tmp")
+                dest = images_dir / _safe_filename(item_no, _image_ext_from_url(large_url))
+                tmp = Path(str(dest) + ".tmp")
                 try:
                     resp = _fetch_via_proxy(large_url, stream=True, retries=5)
                     with open(tmp, "wb") as fh:
@@ -440,6 +461,17 @@ def golden_proxies():
 @login_required
 def lego_image(filename):
     """Serve locally-cached LEGO set images from the shared volume."""
+    direct = Path(LEGO_IMAGES_DIR) / filename
+    if direct.exists():
+        return send_from_directory(LEGO_IMAGES_DIR, filename)
+
+    # Frontend asks for .png; fallback to the real extension if needed.
+    if filename.lower().endswith(".png"):
+        item_no = filename[:-4]
+        alt = _find_existing_image_path(item_no)
+        if alt is not None:
+            return send_from_directory(LEGO_IMAGES_DIR, alt.name)
+
     return send_from_directory(LEGO_IMAGES_DIR, filename)
 
 
@@ -630,6 +662,7 @@ def api_lego_sets_json():
                     "item_no": r.item_no,
                     "description": r.description or "",
                     "image_url": r.image_url or "",
+                    "has_local_image": _find_existing_image_path(r.item_no) is not None,
                     "first_seen": _fmt_ts(r.first_seen),
                     "last_seen": _fmt_ts(r.last_seen),
                 }
@@ -802,3 +835,62 @@ def api_purge_bad_lego_rows():
         except Exception:
             pass
     return jsonify({"deleted": deleted, "errors": errors})
+
+
+@bp.get("/api/lego-debug")
+@login_required
+def api_lego_debug():
+    """Quick diagnostics for LEGO scraping/image pipeline health."""
+    from datetime import datetime, timezone
+
+    session = get_session()
+    current_year = datetime.now(timezone.utc).year
+
+    total = 0
+    missing_description = 0
+    missing_image_url = 0
+    missing_local_file = 0
+    inv_rows = 0
+
+    _inv = re.compile(r'^\s*\(\s*Inv\s*\)\s*$', re.I)
+    samples = []
+
+    for y in range(current_year - 5, current_year + 2):
+        try:
+            rows = list(session.execute(
+                "SELECT year, item_no, description, image_url FROM lego_sets WHERE year = %s", (y,)
+            ))
+        except Exception:
+            continue
+
+        for r in rows:
+            total += 1
+            desc = (r.description or "").strip()
+            img = (r.image_url or "").strip()
+
+            if not desc:
+                missing_description += 1
+            if _inv.match(desc):
+                inv_rows += 1
+            if not img:
+                missing_image_url += 1
+            if img and _find_existing_image_path(r.item_no) is None:
+                missing_local_file += 1
+
+            if len(samples) < 20 and (not desc or _inv.match(desc) or (img and _find_existing_image_path(r.item_no) is None)):
+                samples.append({
+                    "year": r.year,
+                    "item_no": r.item_no,
+                    "description": r.description or "",
+                    "image_url": r.image_url or "",
+                    "has_local_image": _find_existing_image_path(r.item_no) is not None,
+                })
+
+    return jsonify({
+        "total": total,
+        "missing_description": missing_description,
+        "inv_rows": inv_rows,
+        "missing_image_url": missing_image_url,
+        "missing_local_file": missing_local_file,
+        "samples": samples,
+    })

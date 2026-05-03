@@ -45,8 +45,10 @@ SCRAPE_INTERVAL    = int(os.environ.get("SCRAPE_INTERVAL_SECONDS", "3600"))   # 
 REQUEST_TIMEOUT    = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "30"))
 DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5"))  # polite crawl delay
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
+DETAIL_LOOKUP_MAX_PER_PAGE = int(os.environ.get("DETAIL_LOOKUP_MAX_PER_PAGE", "25"))
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
+BRICKLINK_ITEM_BASE = "https://www.bricklink.com/v2/catalog/catalogitem.page"
 
 if CASSANDRA_HOSTS and CASSANDRA_HOSTS[0].startswith("["):
     import json
@@ -217,6 +219,7 @@ def fetch_page(year: int, pg: int, session) -> str | None:
 
 _INV_RE = re.compile(r'^\s*\(\s*Inv\s*\)\s*$', re.I)
 _IMAGE_VARIANT_RE = re.compile(r"\.t\d+\.(png|jpe?g|gif)$", re.I)
+_IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|webp|gif)$", re.I)
 
 
 def _extract_item_no_from_link(href: str | None) -> str:
@@ -247,6 +250,83 @@ def _to_large_image_url(src: str) -> str:
     normalized = normalized.replace("/ItemImage/ST/", "/ItemImage/SL/")
     normalized = _IMAGE_VARIANT_RE.sub(r".\1", normalized)
     return normalized
+
+
+def _image_ext_from_url(url: str) -> str:
+    """Infer extension from URL for local file naming."""
+    m = _IMAGE_EXT_RE.search((url or "").split("?")[0])
+    if not m:
+        return ".png"
+    ext = m.group(1).lower()
+    if ext == "jpg":
+        ext = "jpeg"
+    return "." + ext
+
+
+def _image_base_name(item_no: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", item_no)
+
+
+def _find_existing_image_path(item_no: str) -> str | None:
+    base = _image_base_name(item_no)
+    for ext in (".png", ".jpeg", ".jpg", ".webp", ".gif"):
+        candidate = os.path.join(IMAGE_DIR, base + ext)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _build_image_dest_path(item_no: str, image_url: str) -> str:
+    base = _image_base_name(item_no)
+    ext = _image_ext_from_url(image_url)
+    return os.path.join(IMAGE_DIR, base + ext)
+
+
+def fetch_item_details(item_no: str, session) -> dict:
+    """Fetch one item detail page via proxy to recover missing description/image."""
+    if not item_no:
+        return {"description": "", "image_url": "", "large_image_url": ""}
+    try:
+        resp = fetch_with_proxy(
+            BRICKLINK_ITEM_BASE,
+            session,
+            params={"S": item_no},
+            retries=5,
+            validate=False,
+        )
+    except RuntimeError:
+        return {"description": "", "image_url": "", "large_image_url": ""}
+
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    description = ""
+    og_title = soup.find("meta", attrs={"property": "og:title"})
+    if og_title and og_title.get("content"):
+        description = og_title.get("content", "").strip()
+        if "|" in description:
+            description = description.split("|", 1)[0].strip()
+
+    if not description:
+        if soup.title and soup.title.string:
+            description = soup.title.string.strip().split("|", 1)[0].strip()
+
+    image_url = ""
+    og_image = soup.find("meta", attrs={"property": "og:image"})
+    if og_image and og_image.get("content"):
+        image_url = _normalize_image_url(og_image.get("content", ""))
+
+    large_image_url = _to_large_image_url(image_url)
+    if description and not _INV_RE.match(description):
+        return {
+            "description": description,
+            "image_url": image_url,
+            "large_image_url": large_image_url,
+        }
+    return {
+        "description": "",
+        "image_url": image_url,
+        "large_image_url": large_image_url,
+    }
 
 
 def parse_sets(html: str) -> list[dict]:
@@ -362,10 +442,9 @@ def download_image(item: dict, session) -> None:
     item_no   = item.get("item_no", "")
     if not large_url or not item_no:
         return
-    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
-    dest = os.path.join(IMAGE_DIR, safe_name)
-    if os.path.exists(dest):
+    if _find_existing_image_path(item_no):
         return  # already downloaded
+    dest = _build_image_dest_path(item_no, large_url)
     os.makedirs(IMAGE_DIR, exist_ok=True)
     tmp = dest + ".tmp"
     try:
@@ -479,9 +558,24 @@ def scrape_page(session, update_stmt, year: int, pg: int, prefetched_html: str |
         log.warning("  Skipping year=%d page=%d (fetch failed).", year, pg)
         return 0
     sets = parse_sets(html)
-    log.info("  year=%d page=%d → %d sets", year, pg, len(sets))
+    missing_desc = sum(1 for s in sets if not (s.get("description") or "").strip())
+    missing_img = sum(1 for s in sets if not (s.get("image_url") or "").strip())
+    log.info(
+        "  year=%d page=%d → %d sets (missing description=%d, missing image=%d)",
+        year, pg, len(sets), missing_desc, missing_img
+    )
     now = datetime.now(timezone.utc)
+    detail_lookups = 0
     for item in sets:
+        if (not item.get("description") or not item.get("image_url")) and detail_lookups < DETAIL_LOOKUP_MAX_PER_PAGE:
+            details = fetch_item_details(item.get("item_no", ""), session)
+            if not item.get("description") and details.get("description"):
+                item["description"] = details["description"]
+            if not item.get("image_url") and details.get("image_url"):
+                item["image_url"] = details["image_url"]
+            if not item.get("large_image_url") and details.get("large_image_url"):
+                item["large_image_url"] = details["large_image_url"]
+            detail_lookups += 1
         upsert_set(session, None, update_stmt, year, item, now)
         download_image(item, session)
     return len(sets)
@@ -531,9 +625,7 @@ def backfill_missing_images(session) -> int:
             for r in rows:
                 if not r.item_no or not r.image_url:
                     continue
-                safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", r.item_no) + ".png"
-                dest = os.path.join(IMAGE_DIR, safe_name)
-                if os.path.exists(dest):
+                if _find_existing_image_path(r.item_no):
                     skipped += 1
                     continue
                 large_url = _to_large_image_url(r.image_url)

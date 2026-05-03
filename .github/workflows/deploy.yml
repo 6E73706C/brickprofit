@@ -279,12 +279,8 @@ jobs:
             export NODE0_HOST="${{ vars.NODE0_HOST }}"
             export NODE1_HOST="${{ vars.NODE1_HOST }}"
             export NODE2_HOST="${{ vars.NODE2_HOST }}"
-            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
-              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
-              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
-            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
-               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
+            : "${GRAFANA_PASSWORD:?GRAFANA_PASSWORD missing in /opt/brickprofit/.env}"
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
               docker service rm brickprofit_nginx || true
@@ -308,12 +304,8 @@ jobs:
             export NODE0_HOST="${{ vars.NODE0_HOST }}"
             export NODE1_HOST="${{ vars.NODE1_HOST }}"
             export NODE2_HOST="${{ vars.NODE2_HOST }}"
-            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
-              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
-              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
-            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
-               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
+            : "${GRAFANA_PASSWORD:?GRAFANA_PASSWORD missing in /opt/brickprofit/.env}"
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
               docker service rm brickprofit_nginx || true
@@ -335,12 +327,8 @@ jobs:
             export NODE0_HOST="${{ vars.NODE0_HOST }}"
             export NODE1_HOST="${{ vars.NODE1_HOST }}"
             export NODE2_HOST="${{ vars.NODE2_HOST }}"
-            envsubst '${NODE0_HOST} ${NODE1_HOST} ${NODE2_HOST}' \
-              < /opt/brickprofit/monitoring/prometheus/prometheus.yml \
-              > /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml
-            mv /opt/brickprofit/monitoring/prometheus/prometheus.resolved.yml \
-               /opt/brickprofit/monitoring/prometheus/prometheus.yml
             set -a; source /opt/brickprofit/.env; set +a
+            : "${GRAFANA_PASSWORD:?GRAFANA_PASSWORD missing in /opt/brickprofit/.env}"
             NGINX_MODE=$(docker service ls --filter name=brickprofit_nginx --format '{{.Mode}}' 2>/dev/null || echo "")
             if [ "$NGINX_MODE" = "replicated" ]; then
               docker service rm brickprofit_nginx || true
@@ -449,14 +437,8 @@ jobs:
             GID=$(s "$H" "$P" "docker ps --filter name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
             if [ -n "$GID" ]; then
               GRAFANA_PASSWORD=$(s "$H" "$P" "grep '^GRAFANA_PASSWORD=' /opt/brickprofit/.env | cut -d= -f2-")
-              GRAFANA_ADMIN_USER=$(s "$H" "$P" "grep '^GRAFANA_ADMIN_USER=' /opt/brickprofit/.env | cut -d= -f2-")
-              GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER:-grafana_admin}
-              # Reset password via Grafana API (works regardless of username)
-              s "$H" "$P" "curl -sf -X PUT -H 'Content-Type: application/json' \
-                -u '${GRAFANA_ADMIN_USER}:${GRAFANA_PASSWORD}' \
-                http://localhost:3000/api/user/password \
-                -d '{\"oldPassword\":\"${GRAFANA_PASSWORD}\",\"newPassword\":\"${GRAFANA_PASSWORD}\",\"confirmNew\":\"${GRAFANA_PASSWORD}\"}' || \
-                docker exec $GID grafana cli admin reset-admin-password '${GRAFANA_PASSWORD}'" \
+              # Force-reset built-in admin password every deploy for deterministic login.
+              s "$H" "$P" "docker exec $GID grafana cli admin reset-admin-password '${GRAFANA_PASSWORD}'" \
                 && echo "Grafana password synced on $H." || echo "Grafana password sync failed (non-fatal)"
               break
             fi
