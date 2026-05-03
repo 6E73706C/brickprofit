@@ -30,6 +30,11 @@ volumes:
   cassandra_data_3:
   redis_data:
   grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/gluster/grafana-data
   prometheus_data:
   lego_images:
     driver: local

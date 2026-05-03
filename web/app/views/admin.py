@@ -150,7 +150,7 @@ def _backfill_worker(rows: list) -> None:
                     continue
                 tmp = dest.with_suffix(".tmp")
                 try:
-                    resp = _fetch_via_proxy(large_url, stream=True, retries=3)
+                    resp = _fetch_via_proxy(large_url, stream=True, retries=5)
                     with open(tmp, "wb") as fh:
                         for chunk in resp.iter_content(65536):
                             fh.write(chunk)

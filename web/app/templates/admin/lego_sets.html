@@ -22,14 +22,6 @@
         {% endfor %}
       </select>
     </form>
-    <button id="backfill-btn" class="bp-btn" onclick="startBackfill()" title="Download all missing LEGO images from BrickLink">
-      <i class="bi bi-cloud-download"></i> Download Images
-    </button>
-    <button id="purge-btn" class="bp-btn" onclick="purgeBadRows()" title="Delete rows with bad \"( Inv )\" description so they get re-scraped">
-      <i class="bi bi-trash"></i> Purge Bad Rows
-    </button>
-    <span id="backfill-status" style="font-size:.82rem;color:#94a3b8;"></span>
-    <span id="purge-status" style="font-size:.82rem;color:#94a3b8;"></span>
   </div>
 </div>
 <div class="bp-card">
@@ -113,66 +105,6 @@ document.getElementById('legoImgModal').addEventListener('show.bs.modal', functi
 document.getElementById('legoImgModal').addEventListener('hidden.bs.modal', function() {
   document.getElementById('legoImgModalImg').src = '';
 });
-
-// ── Image backfill ───────────────────────────────────────────────────────────
-let _backfillPoll = null;
-function updateBackfillStatus(d){
-  const btn=document.getElementById('backfill-btn');
-  const lbl=document.getElementById('backfill-status');
-  if(!btn||!lbl) return;
-  if(d.running){
-    const pct=d.total?Math.round(d.done/d.total*100):0;
-    const errTxt=d.errors>0?` • ${d.errors} errors`:'';
-    lbl.textContent=`Downloading… ${d.done}/${d.total} (${pct}%)${errTxt}`;
-    btn.disabled=true;
-    if(!_backfillPoll) _backfillPoll=setInterval(pollBackfill,2000);
-  } else {
-    if(d.total!=null && d.done!=null && d.total>0){
-      lbl.textContent=d.errors>0
-        ? `Done: ${d.done} processed, ${d.errors} failed`
-        : d.done>0 ? `Done: ${d.done} images downloaded` : '';
-    } else if(d.last_error) {
-      lbl.style.color='#f87171';
-      lbl.textContent=`Failed: ${d.last_error}`;
-    } else { lbl.textContent=''; }
-    lbl.style.color='';
-    btn.disabled=false;
-    if(_backfillPoll){clearInterval(_backfillPoll);_backfillPoll=null;}
-  }
-}
-function pollBackfill(){
-  fetch('/admin/api/backfill-lego-images')
-    .then(r=>r.ok?r.json():Promise.reject(r.status))
-    .then(updateBackfillStatus).catch(()=>{});
-}
-function startBackfill(){
-  document.getElementById('backfill-status').textContent='Starting…';
-  document.getElementById('backfill-btn').disabled=true;
-  fetch('/admin/api/backfill-lego-images',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token() }}'}})
-    .then(r=>{
-      if(!r.ok) return r.text().then(t=>{throw new Error('Server error '+r.status+': '+t.slice(0,200));});
-      return r.json();
-    }).then(d=>{
-      updateBackfillStatus(d);
-    }).catch(e=>{
-      document.getElementById('backfill-status').textContent='Error: '+e.message;
-      document.getElementById('backfill-btn').disabled=false;
-    });
-}
-// check if a backfill is already running on page load
-pollBackfill();
-
-// ── Purge bad rows ───────────────────────────────────────────────────────────
-function purgeBadRows(){
-  if(!confirm('Delete all rows with "( Inv )" description so they get re-scraped?')) return;
-  const btn=document.getElementById('purge-btn');
-  const lbl=document.getElementById('purge-status');
-  btn.disabled=true; lbl.textContent='Purging…';
-  fetch('/admin/api/purge-bad-lego-rows',{method:'POST',headers:{'X-CSRFToken':'{{ csrf_token() }}'}})
-    .then(r=>r.ok?r.json():r.text().then(t=>{throw new Error(t.slice(0,200));}))
-    .then(d=>{ lbl.textContent=`Deleted ${d.deleted} bad rows (${d.errors} errors). Reload to see changes.`; btn.disabled=false; })
-    .catch(e=>{ lbl.textContent='Error: '+e.message; btn.disabled=false; });
-}
 
 // ── Live polling ─────────────────────────────────────────────────────────────
 (function(){

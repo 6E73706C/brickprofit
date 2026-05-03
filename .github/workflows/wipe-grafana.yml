@@ -7,42 +7,7 @@ jobs:
   wipe:
     runs-on: ubuntu-latest
     steps:
-      - name: Scale down Grafana and remove volume on NODE0
-        continue-on-error: true
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.NODE0_HOST }}
-          username: root
-          password: ${{ secrets.NODE0_SSH_PASSWORD }}
-          command_timeout: 3m
-          script: |
-            docker service scale brickprofit_grafana=0 2>/dev/null || true
-            sleep 10
-            docker volume rm brickprofit_grafana_data 2>/dev/null || true
-
-      - name: Remove volume on NODE1
-        continue-on-error: true
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.NODE1_HOST }}
-          username: root
-          password: ${{ secrets.NODE1_SSH_PASSWORD }}
-          command_timeout: 3m
-          script: |
-            docker volume rm brickprofit_grafana_data 2>/dev/null || true
-
-      - name: Remove volume on NODE2
-        continue-on-error: true
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.NODE2_HOST }}
-          username: root
-          password: ${{ secrets.NODE2_SSH_PASSWORD }}
-          command_timeout: 3m
-          script: |
-            docker volume rm brickprofit_grafana_data 2>/dev/null || true
-
-      - name: Redeploy stack from NODE0 (Grafana reinitialises fresh with env-var credentials)
+      - name: Scale down Grafana, wipe GlusterFS data, redeploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ vars.NODE0_HOST }}
@@ -50,10 +15,18 @@ jobs:
           password: ${{ secrets.NODE0_SSH_PASSWORD }}
           command_timeout: 10m
           script: |
+            # Stop grafana so it releases the SQLite DB files
+            docker service scale brickprofit_grafana=0 2>/dev/null || true
+            sleep 10
+            # Wipe the shared GlusterFS directory (one node is enough – it replicates)
+            rm -rf /mnt/gluster/grafana-data/*
+            # Remove any stale local Docker volume (migration from old layout)
+            docker volume rm brickprofit_grafana_data 2>/dev/null || true
+            # Redeploy – Grafana will reinitialise from the now-empty GlusterFS volume
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             set -a; source /opt/brickprofit/.env; set +a
             docker stack deploy \
               --compose-file /opt/brickprofit/docker-stack.yml \
               --resolve-image never \
               brickprofit
-            echo "Stack redeployed. Grafana will start with GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}"
+            echo "Stack redeployed. Grafana will start fresh with GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}"

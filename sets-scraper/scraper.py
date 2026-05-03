@@ -321,7 +321,7 @@ def download_image(item: dict, session) -> None:
     os.makedirs(IMAGE_DIR, exist_ok=True)
     tmp = dest + ".tmp"
     try:
-        resp = fetch_with_proxy(large_url, session, stream=True, retries=3)
+        resp = fetch_with_proxy(large_url, session, stream=True, retries=5)
         with open(tmp, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)

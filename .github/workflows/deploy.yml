@@ -148,6 +148,8 @@ jobs:
               systemctl enable --now glusterd
               mkdir -p /data/glusterbrick/lego-images
               mkdir -p /mnt/gluster/lego-images
+              mkdir -p /data/glusterbrick/grafana-data
+              mkdir -p /mnt/gluster/grafana-data
             "
           done
 
@@ -162,6 +164,12 @@ jobs:
                 $N1_HOST:/data/glusterbrick/lego-images \
                 $N2_HOST:/data/glusterbrick/lego-images force
             gluster volume start lego-images || true
+            gluster volume info grafana-data >/dev/null 2>&1 || \
+              gluster volume create grafana-data replica 3 \
+                $N0_HOST:/data/glusterbrick/grafana-data \
+                $N1_HOST:/data/glusterbrick/grafana-data \
+                $N2_HOST:/data/glusterbrick/grafana-data force
+            gluster volume start grafana-data || true
           "
 
           # ── GlusterFS – mount on all nodes (idempotent) ────────────────────
@@ -173,6 +181,10 @@ jobs:
                 || mount -t glusterfs localhost:/lego-images /mnt/gluster/lego-images
               grep -qF 'lego-images' /etc/fstab \
                 || echo 'localhost:/lego-images /mnt/gluster/lego-images glusterfs defaults,_netdev 0 0' >> /etc/fstab
+              mountpoint -q /mnt/gluster/grafana-data \
+                || mount -t glusterfs localhost:/grafana-data /mnt/gluster/grafana-data
+              grep -qF 'grafana-data' /etc/fstab \
+                || echo 'localhost:/grafana-data /mnt/gluster/grafana-data glusterfs defaults,_netdev 0 0' >> /etc/fstab
             "
           done
 
@@ -191,6 +203,7 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p /mnt/gluster/lego-images
+            mkdir -p /mnt/gluster/grafana-data
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -213,6 +226,7 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p /mnt/gluster/lego-images
+            mkdir -p /mnt/gluster/grafana-data
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
@@ -235,6 +249,7 @@ jobs:
           script: |
             set -euo pipefail
             mkdir -p /mnt/gluster/lego-images
+            mkdir -p /mnt/gluster/grafana-data
             cd /opt/brickprofit && git fetch origin && git reset --hard origin/main
             for SVC in nginx api web worker; do
               docker build --tag "brickprofit-${SVC}:latest" ./${SVC}
