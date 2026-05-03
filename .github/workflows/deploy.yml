@@ -466,18 +466,30 @@ jobs:
         run: |
           sudo apt-get install -y sshpass -qq
           s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
-          # Try each node — Grafana runs on whichever one Swarm picked
-          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
-            H=$(echo "$H_P" | cut -d' ' -f1)
-            P=$(echo "$H_P" | cut -d' ' -f2)
-            GID=$(s "$H" "$P" "docker ps --filter name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
-            if [ -n "$GID" ]; then
-              # Force-reset built-in admin password every deploy for deterministic login.
-              s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\"" \
-                && echo "Grafana password synced on $H." || echo "Grafana password sync failed (non-fatal)"
-              break
-            fi
+          # Find the active Grafana task and reset admin password deterministically.
+          # Fail the workflow if this cannot be done, to avoid silent login drift.
+          synced=0
+          for attempt in $(seq 1 30); do
+            for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+              H=$(echo "$H_P" | cut -d' ' -f1)
+              P=$(echo "$H_P" | cut -d' ' -f2)
+              GID=$(s "$H" "$P" "docker ps --filter label=com.docker.swarm.service.name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
+              if [ -n "$GID" ]; then
+                echo "Grafana container found on $H (attempt $attempt/30): $GID"
+                s "$H" "$P" "set -euo pipefail; set -a; source /opt/brickprofit/.env; set +a; : \"\${GRAFANA_PASSWORD:?missing}\"; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\""
+                echo "Grafana password synced on $H."
+                synced=1
+                break 2
+              fi
+            done
+            echo "Grafana container not ready yet (attempt $attempt/30), waiting 5s..."
+            sleep 5
           done
+
+          if [ "$synced" -ne 1 ]; then
+            echo "ERROR: Could not find/reset Grafana admin password on any node."
+            exit 1
+          fi
 
       - name: Dump web & api service logs (debug)
         if: always()
