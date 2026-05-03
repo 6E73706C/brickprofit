@@ -88,6 +88,7 @@ def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "ob
     from requests.exceptions import (
         ConnectionError as _CE, Timeout as _TE,
         ProxyError as _PE, SSLError as _SE,
+        HTTPError as _HE,
     )
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
@@ -101,8 +102,11 @@ def _fetch_via_proxy(url: str, *, stream: bool = False, retries: int = 3) -> "ob
             _drop_proxy(proxy_row)
             last_exc = exc
             time.sleep(1)
+        except _HE as exc:
+            # HTTP 4xx/5xx from target – proxy is alive but blocked; try another proxy
+            last_exc = exc
+            # No break – continue loop to try next proxy
         except Exception as exc:
-            # HTTP error (4xx/5xx) or other – proxy is fine, resource issue – stop retrying
             last_exc = exc
             break
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc

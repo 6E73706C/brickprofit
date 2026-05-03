@@ -164,9 +164,16 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
             drop_proxy(session, proxy_row)
             last_exc = exc
             time.sleep(3 * attempt)  # back-off: 3s, 6s, 9s …
-        except Exception as exc:
-            # HTTP error (4xx/5xx) or other – proxy is fine, resource issue – stop retrying
+        except (requests.exceptions.HTTPError, ValueError) as exc:
+            # HTTP 4xx/5xx from BrickLink (block/ban) OR bad catalog content –
+            # proxy is alive but blocked by target; try a different proxy without dropping
             log.warning("Request attempt %d/%d via %s:%s failed (HTTP): %s",
+                        attempt, retries, proxy_row.ip, proxy_row.port, exc)
+            last_exc = exc
+            # No break – continue loop to try next proxy
+        except Exception as exc:
+            # Unexpected error – stop retrying
+            log.warning("Request attempt %d/%d via %s:%s failed (unexpected): %s",
                         attempt, retries, proxy_row.ip, proxy_row.port, exc)
             last_exc = exc
             break
