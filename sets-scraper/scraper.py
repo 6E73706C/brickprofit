@@ -21,6 +21,7 @@ import random
 import re
 import time
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -215,6 +216,37 @@ def fetch_page(year: int, pg: int, session) -> str | None:
 
 
 _INV_RE = re.compile(r'^\s*\(\s*Inv\s*\)\s*$', re.I)
+_IMAGE_VARIANT_RE = re.compile(r"\.t\d+\.(png|jpe?g|gif)$", re.I)
+
+
+def _extract_item_no_from_link(href: str | None) -> str:
+    """Extract canonical BrickLink set number from a catalogitem link."""
+    if not href:
+        return ""
+    parsed = urlparse(href)
+    qs = parse_qs(parsed.query)
+    item_no = (qs.get("S") or [""])[0].strip()
+    return item_no
+
+
+def _normalize_image_url(src: str) -> str:
+    """Normalize BrickLink image URLs to absolute URLs."""
+    src = (src or "").strip()
+    if not src:
+        return ""
+    if src.startswith("//"):
+        return "https:" + src
+    return urljoin("https://www.bricklink.com", src)
+
+
+def _to_large_image_url(src: str) -> str:
+    """Convert thumbnail URL into the large image URL when possible."""
+    normalized = _normalize_image_url(src)
+    if not normalized:
+        return ""
+    normalized = normalized.replace("/ItemImage/ST/", "/ItemImage/SL/")
+    normalized = _IMAGE_VARIANT_RE.sub(r".\1", normalized)
+    return normalized
 
 
 def parse_sets(html: str) -> list[dict]:
@@ -242,14 +274,14 @@ def parse_sets(html: str) -> list[dict]:
         if len(tds) < 3:
             continue
 
-        # Find item_no: first catalogitem.page?S= link whose text is NOT "(Inv)"
-        item_no = None
+        # Find item_no from the S= query parameter, not link text.
+        item_no = ""
         for td in tds:
             for a in td.find_all("a", href=re.compile(r"catalogitem\.page\?S=", re.I)):
-                text = a.get_text(strip=True)
-                if text and not _INV_RE.match(text):
-                    item_no = text
+                item_no = _extract_item_no_from_link(a.get("href", ""))
+                if item_no and not _INV_RE.match(item_no):
                     break
+                item_no = ""
             if item_no:
                 break
 
@@ -257,16 +289,34 @@ def parse_sets(html: str) -> list[dict]:
             continue
         seen.add(item_no)
 
-        # Find description: first <strong> or <b> whose text is not "(Inv)"
+        # Find description: robust fallbacks for BrickLink markup variants.
         description = ""
         for td in tds:
             for tag in td.find_all(["strong", "b"]):
                 t = tag.get_text(strip=True)
-                if t and not _INV_RE.match(t):
+                if t and not _INV_RE.match(t) and t != item_no:
                     description = t
                     break
             if description:
                 break
+
+        if not description:
+            for td in tds:
+                img = td.find("img")
+                alt = (img.get("alt", "") if img else "").strip()
+                if alt and not _INV_RE.match(alt) and alt != item_no:
+                    description = alt
+                    break
+
+        if not description:
+            for td in tds:
+                for a in td.find_all("a", href=re.compile(r"catalogitem\.page\?S=", re.I)):
+                    t = a.get_text(strip=True)
+                    if t and not _INV_RE.match(t) and t != item_no:
+                        description = t
+                        break
+                if description:
+                    break
 
         # Find image: first <img> in any TD
         image_url = ""
@@ -275,10 +325,8 @@ def parse_sets(html: str) -> list[dict]:
             img = td.find("img")
             if img:
                 src = img.get("src", "")
-                if src.startswith("//"):
-                    src = "https:" + src
-                image_url = src
-                large_image_url = src.replace("/ItemImage/ST/", "/ItemImage/SL/").replace(".t1.png", ".png")
+                image_url = _normalize_image_url(src)
+                large_image_url = _to_large_image_url(src)
                 break
 
         results.append({
@@ -466,9 +514,7 @@ def backfill_missing_images(session) -> int:
                 if os.path.exists(dest):
                     skipped += 1
                     continue
-                large_url = (r.image_url
-                             .replace("/ItemImage/ST/", "/ItemImage/SL/")
-                             .replace(".t1.png", ".png"))
+                large_url = _to_large_image_url(r.image_url)
                 item = {"item_no": r.item_no, "large_image_url": large_url}
                 download_image(item, session)
                 if os.path.exists(dest):

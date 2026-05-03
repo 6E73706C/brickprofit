@@ -3,6 +3,7 @@ import re
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urljoin
 
 from flask import Blueprint, jsonify, render_template, request, send_from_directory
 from flask_login import login_required
@@ -40,8 +41,28 @@ def _write_state(state: dict) -> None:
         pass
 
 
+_IMAGE_VARIANT_RE = re.compile(r"\.t\d+\.(png|jpe?g|gif)$", re.I)
+
+
 def _safe_filename(item_no: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", item_no) + ".png"
+
+
+def _normalize_image_url(src: str) -> str:
+    src = (src or "").strip()
+    if not src:
+        return ""
+    if src.startswith("//"):
+        return "https:" + src
+    return urljoin("https://www.bricklink.com", src)
+
+
+def _to_large_image_url(src: str) -> str:
+    normalized = _normalize_image_url(src)
+    if not normalized:
+        return ""
+    normalized = normalized.replace("/ItemImage/ST/", "/ItemImage/SL/")
+    return _IMAGE_VARIANT_RE.sub(r".\1", normalized)
 
 
 def _pick_proxy() -> tuple[object, dict]:
@@ -138,8 +159,10 @@ def _backfill_worker(rows: list) -> None:
                 if not item_no or not image_url:
                     done += 1
                     continue
-                large_url = image_url.replace("/ItemImage/ST/", "/ItemImage/SL/")
-                large_url = re.sub(r"\.t1\.png$", ".png", large_url)
+                large_url = _to_large_image_url(image_url)
+                if not large_url:
+                    done += 1
+                    continue
                 dest = images_dir / _safe_filename(item_no)
                 if dest.exists():
                     done += 1
