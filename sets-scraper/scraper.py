@@ -47,7 +47,7 @@ DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5")) 
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 DETAIL_LOOKUP_MAX_PER_PAGE = int(os.environ.get("DETAIL_LOOKUP_MAX_PER_PAGE", "25"))
 METADATA_LOOKUP_MAX_PER_CYCLE = int(os.environ.get("METADATA_LOOKUP_MAX_PER_CYCLE", "400"))
-ALLOW_DIRECT_BRICKLINK_FALLBACK = os.environ.get("ALLOW_DIRECT_BRICKLINK_FALLBACK", "1").strip().lower() in {"1", "true", "yes", "on"}
+ALLOW_DIRECT_BRICKLINK_FALLBACK = os.environ.get("ALLOW_DIRECT_BRICKLINK_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
 BRICKLINK_ITEM_BASE = "https://www.bricklink.com/v2/catalog/catalogitem.page"
