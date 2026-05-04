@@ -474,12 +474,13 @@ jobs:
               P=$(echo "$H_P" | cut -d' ' -f2)
               GID=$(s "$H" "$P" "docker ps --filter label=com.docker.swarm.service.name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
               if [ -z "$GID" ]; then continue; fi
-              # reset-and-start.sh uses --direct to modify the DB before Grafana
-              # starts, so by the time Grafana's HTTP API is healthy the password
-              # is already correct. Just wait for the API to confirm Grafana is up.
+              # Wait for Grafana HTTP API – then reset password through the running
+              # server (no --direct, no SQLite locking issues).
               HEALTHY=$(s "$H" "$P" "docker exec $GID wget -q -O- http://localhost:3000/api/health 2>/dev/null || true")
               if echo "$HEALTHY" | grep -q '"database":"ok"'; then
-                echo "Grafana is up and healthy on $H (attempt $attempt): $GID"
+                echo "Grafana healthy on $H (attempt $attempt): $GID"
+                s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; : \"\${GRAFANA_PASSWORD:?missing}\"; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\""
+                echo "Grafana password synced on $H."
                 synced=1
                 break 2
               fi
