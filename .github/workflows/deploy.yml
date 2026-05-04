@@ -296,17 +296,6 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
-            GRAFANA_CID=""
-            for i in $(seq 1 30); do
-              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
-              if [ -n "$GRAFANA_CID" ]; then
-                break
-              fi
-              sleep 5
-            done
-            if [ -n "$GRAFANA_CID" ]; then
-              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
-            fi
 
       - name: Deploy stack from NODE1 (fallback)
         id: deploy_node1
@@ -332,17 +321,6 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
-            GRAFANA_CID=""
-            for i in $(seq 1 30); do
-              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
-              if [ -n "$GRAFANA_CID" ]; then
-                break
-              fi
-              sleep 5
-            done
-            if [ -n "$GRAFANA_CID" ]; then
-              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
-            fi
 
       - name: Deploy stack from NODE2 (fallback)
         if: steps.deploy_node0.outcome != 'success' && steps.deploy_node1.outcome != 'success'
@@ -366,17 +344,6 @@ jobs:
             for SVC in nginx api web worker beat proxy-fetcher proxy-tester sets-scraper docker-socket-proxy grafana prometheus node_exporter; do
               docker service update --force --detach=true brickprofit_${SVC} 2>/dev/null || true
             done
-            GRAFANA_CID=""
-            for i in $(seq 1 30); do
-              GRAFANA_CID=$(docker ps --filter name=brickprofit_grafana --format '{{.ID}}' | head -1 || true)
-              if [ -n "$GRAFANA_CID" ]; then
-                break
-              fi
-              sleep 5
-            done
-            if [ -n "$GRAFANA_CID" ]; then
-              docker exec "$GRAFANA_CID" grafana cli --homepath /usr/share/grafana admin reset-admin-password "$GRAFANA_PASSWORD" || true
-            fi
 
       - name: Init Cassandra schema
         env:
@@ -497,28 +464,34 @@ jobs:
         run: |
           sudo apt-get install -y sshpass -qq
           s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
-          # Find the active Grafana task and reset admin password deterministically.
-          # Fail the workflow if this cannot be done, to avoid silent login drift.
+          # Wait until Grafana's HTTP API is healthy BEFORE touching the password.
+          # This guarantees reset-and-start.sh has already completed its own reset
+          # inside the container, so there is no concurrent SQLite write race.
           synced=0
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 60); do
             for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
               H=$(echo "$H_P" | cut -d' ' -f1)
               P=$(echo "$H_P" | cut -d' ' -f2)
               GID=$(s "$H" "$P" "docker ps --filter label=com.docker.swarm.service.name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
-              if [ -n "$GID" ]; then
-                echo "Grafana container found on $H (attempt $attempt/30): $GID"
-                s "$H" "$P" "set -euo pipefail; set -a; source /opt/brickprofit/.env; set +a; : \"\${GRAFANA_PASSWORD:?missing}\"; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\""
+              if [ -z "$GID" ]; then continue; fi
+              # Wait for Grafana HTTP API to report healthy – means server is fully
+              # started and reset-and-start.sh has long since finished.
+              HEALTHY=$(s "$H" "$P" "docker exec $GID wget -q -O- http://localhost:3000/api/health 2>/dev/null || true")
+              if echo "$HEALTHY" | grep -q '"database":"ok"'; then
+                echo "Grafana healthy on $H (attempt $attempt): $GID"
+                set -a; source /opt/brickprofit/.env; set +a || true
+                s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; : \"\${GRAFANA_PASSWORD:?missing}\"; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\""
                 echo "Grafana password synced on $H."
                 synced=1
                 break 2
               fi
             done
-            echo "Grafana container not ready yet (attempt $attempt/30), waiting 5s..."
+            echo "Grafana not healthy yet (attempt $attempt/60), waiting 5s..."
             sleep 5
           done
 
           if [ "$synced" -ne 1 ]; then
-            echo "ERROR: Could not find/reset Grafana admin password on any node."
+            echo "ERROR: Grafana did not become healthy on any node within 5 minutes."
             exit 1
           fi
 
