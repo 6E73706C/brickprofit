@@ -458,6 +458,34 @@ jobs:
           done
           echo "WARNING: Could not apply migrations – no Cassandra node reachable"
 
+      - name: Compact Cassandra golden_proxies (clear tombstones)
+        env:
+          N0_HOST: ${{ vars.NODE0_HOST }}
+          N0_PASS: ${{ secrets.NODE0_SSH_PASSWORD }}
+          N1_HOST: ${{ vars.NODE1_HOST }}
+          N1_PASS: ${{ secrets.NODE1_SSH_PASSWORD }}
+          N2_HOST: ${{ vars.NODE2_HOST }}
+          N2_PASS: ${{ secrets.NODE2_SSH_PASSWORD }}
+        run: |
+          sudo apt-get install -y sshpass -qq
+          s() { sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=15 root@"$1" "$3"; }
+          # Run nodetool compact on exactly one Cassandra node.
+          # This merges SSTables and physically removes tombstones left by deleted proxies.
+          # Idempotent – a no-op if there is nothing to compact.
+          for H_P in "$N0_HOST $N0_PASS" "$N1_HOST $N1_PASS" "$N2_HOST $N2_PASS"; do
+            H=$(echo "$H_P" | cut -d' ' -f1)
+            P=$(echo "$H_P" | cut -d' ' -f2)
+            CONTAINER=$(s "$H" "$P" "docker ps --filter name=brickprofit_cassandra1 --format '{{.ID}}'" 2>/dev/null | head -1 || true)
+            if [ -n "$CONTAINER" ]; then
+              if s "$H" "$P" "docker exec $CONTAINER nodetool status brickprofit" >/dev/null 2>&1; then
+                echo "Running compaction on $H..."
+                s "$H" "$P" "docker exec $CONTAINER nodetool compact brickprofit golden_proxies" \
+                  && echo "Compaction complete." || echo "Compaction error (non-fatal, continuing)"
+                break
+              fi
+            fi
+          done
+
       - name: Sync Grafana admin password
         env:
           N0_HOST: ${{ vars.NODE0_HOST }}

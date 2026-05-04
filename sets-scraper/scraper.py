@@ -47,8 +47,6 @@ DELAY_BETWEEN_PAGES = float(os.environ.get("DELAY_BETWEEN_PAGES_SECONDS", "5")) 
 IMAGE_DIR          = os.environ.get("LEGO_IMAGES_DIR", "/data/lego-images")
 DETAIL_LOOKUP_MAX_PER_PAGE = int(os.environ.get("DETAIL_LOOKUP_MAX_PER_PAGE", "25"))
 METADATA_LOOKUP_MAX_PER_CYCLE = int(os.environ.get("METADATA_LOOKUP_MAX_PER_CYCLE", "400"))
-ALLOW_DIRECT_BRICKLINK_FALLBACK = os.environ.get("ALLOW_DIRECT_BRICKLINK_FALLBACK", "0").strip().lower() in {"1", "true", "yes", "on"}
-
 BRICKLINK_BASE = "https://www.bricklink.com/catalogList.asp"
 BRICKLINK_ITEM_BASE = "https://www.bricklink.com/v2/catalog/catalogitem.page"
 
@@ -182,23 +180,6 @@ def fetch_with_proxy(url: str, session, *, params: dict | None = None,
                         attempt, retries, proxy_row.ip, proxy_row.port, exc)
             last_exc = exc
             break
-    if ALLOW_DIRECT_BRICKLINK_FALLBACK:
-        try:
-            log.warning("Falling back to direct request for %s after proxy failures.", url)
-            resp = requests.get(
-                url,
-                params=params,
-                headers=HEADERS,
-                timeout=REQUEST_TIMEOUT,
-                stream=stream,
-            )
-            resp.raise_for_status()
-            if validate and not is_valid_catalog_html(resp):
-                raise ValueError("Direct request returned blocked/error page from BrickLink")
-            return resp
-        except Exception as exc:
-            last_exc = exc
-
     raise RuntimeError(f"All {retries} proxy attempts failed for {url}") from last_exc
 
 
