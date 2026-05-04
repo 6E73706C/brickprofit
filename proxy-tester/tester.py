@@ -101,7 +101,7 @@ def is_valid_ip(text: str) -> bool:
 
 
 # ── Proxy test ────────────────────────────────────────────────────────────────
-def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
+def test_proxy(protocol: str, ip: str, port: int) -> bool:
     """
     Returns True only when:
       1. The request through the proxy succeeds; AND

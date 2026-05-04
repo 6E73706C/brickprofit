@@ -474,24 +474,24 @@ jobs:
               P=$(echo "$H_P" | cut -d' ' -f2)
               GID=$(s "$H" "$P" "docker ps --filter label=com.docker.swarm.service.name=brickprofit_grafana --format '{{.ID}}'" 2>/dev/null | head -1 || true)
               if [ -z "$GID" ]; then continue; fi
-              # Wait for Grafana HTTP API to report healthy – means server is fully
-              # started and reset-and-start.sh has long since finished.
-              HEALTHY=$(s "$H" "$P" "docker exec $GID wget -q -O- http://localhost:3000/api/health 2>/dev/null || true")
-              if echo "$HEALTHY" | grep -q '"database":"ok"'; then
-                echo "Grafana healthy on $H (attempt $attempt): $GID"
-                set -a; source /opt/brickprofit/.env; set +a || true
+              # Check container logs for the grafana-wrapper completion message.
+              # This works as soon as reset-and-start.sh finishes (before Grafana
+              # even starts listening on port 3000), so it's fast and reliable.
+              LOGS=$(s "$H" "$P" "docker logs $GID 2>&1" 2>/dev/null || true)
+              if echo "$LOGS" | grep -qE 'grafana-wrapper.*(successful|No existing DB)'; then
+                echo "Grafana wrapper done on $H (attempt $attempt): $GID"
                 s "$H" "$P" "set -a; source /opt/brickprofit/.env; set +a; : \"\${GRAFANA_PASSWORD:?missing}\"; docker exec $GID grafana cli --homepath /usr/share/grafana admin reset-admin-password \"\$GRAFANA_PASSWORD\""
                 echo "Grafana password synced on $H."
                 synced=1
                 break 2
               fi
             done
-            echo "Grafana not healthy yet (attempt $attempt/60), waiting 5s..."
+            echo "Grafana wrapper not done yet (attempt $attempt/60), waiting 5s..."
             sleep 5
           done
 
           if [ "$synced" -ne 1 ]; then
-            echo "ERROR: Grafana did not become healthy on any node within 5 minutes."
+            echo "ERROR: Grafana wrapper did not complete on any node within 5 minutes."
             exit 1
           fi
 
