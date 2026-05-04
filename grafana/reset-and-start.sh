@@ -20,6 +20,7 @@ if [ -f "$DB_PATH" ]; then
         if grafana cli \
             --homepath /usr/share/grafana \
             admin reset-admin-password \
+            --direct \
             "$GF_SECURITY_ADMIN_PASSWORD" 2>&1; then
             echo "[grafana-wrapper] Password reset successful (attempt $i)."
             break
