@@ -51,8 +51,18 @@ TEST_URLS = [
     "https://checkip.amazonaws.com",
     "https://api4.my-ip.io/ip.txt",
 ]
-# Keep the single name for own-IP detection (used in get_own_ip)
-TEST_URL = TEST_URLS[0]
+
+# Comma-separated list of this server's known public IPs (all swarm nodes).
+# Set NODE_IPS in the environment for each node so we can detect proxy leakage
+# without making any direct outbound connection.
+NODE_IPS: set[str] = {
+    ip.strip() for ip in os.environ.get("NODE_IPS", "").split(",") if ip.strip()
+}
+if not NODE_IPS:
+    raise RuntimeError(
+        "NODE_IPS env var is required (comma-separated public IPs of all swarm nodes). "
+        "Example: NODE_IPS=23.88.123.22,178.105.72.175,178.105.76.42"
+    )
 
 if CASSANDRA_HOSTS and CASSANDRA_HOSTS[0].startswith("["):
     import json
@@ -90,37 +100,16 @@ def is_valid_ip(text: str) -> bool:
         return False
 
 
-# ── Own IP detection ──────────────────────────────────────────────────────────
-def get_own_ip() -> str:
-    """Determine the server's real public IP so we can detect proxy spoofing."""
-    headers = {"User-Agent": "curl/7.68.0"}
-    urls = list(TEST_URLS)          # try all services in order
-    random.shuffle(urls)
-    for url in urls:
-        for attempt in range(1, 4):
-            try:
-                resp = requests.get(url, timeout=15, headers=headers)
-                ip = resp.text.strip()
-                if is_valid_ip(ip):
-                    log.info("Own public IP: %s (via %s)", ip, url)
-                    return ip
-                log.warning("Own-IP: unexpected response from %s: %r", url, ip[:80])
-                break
-            except Exception as exc:
-                log.warning("Own-IP attempt %d/3 via %s failed: %s", attempt, url, exc)
-                time.sleep(3)
-    raise RuntimeError("Could not determine own public IP from any test URL")
-
-
 # ── Proxy test ────────────────────────────────────────────────────────────────
 def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
     """
     Returns True only when:
       1. The request through the proxy succeeds; AND
-      2. The returned IP is a valid IP and different from the server's real IP.
+      2. The returned IP is a valid IP and NOT one of this server's known IPs.
 
     Rotates randomly across TEST_URLS to distribute load and avoid rate-limits.
     Falls back to a second URL if the first returns a non-IP response.
+    All connections are made through the proxy under test — no direct connections.
     """
     if protocol == "http":
         proxy_url = f"http://{ip}:{port}"
@@ -148,7 +137,8 @@ def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
             if not is_valid_ip(returned_ip):
                 # Service returned HTML/error — try next candidate
                 continue
-            return returned_ip != own_ip
+            # Proxy is valid only if the returned IP is not any of our own node IPs
+            return returned_ip not in NODE_IPS
         except Exception:
             # Connection/timeout — proxy is bad, no point trying another URL
             return False
@@ -156,7 +146,7 @@ def test_proxy(protocol: str, ip: str, port: int, own_ip: str) -> bool:
 
 
 # ── Test cycle ────────────────────────────────────────────────────────────────
-def run_once(session, own_ip: str) -> None:
+def run_once(session) -> None:
     now = datetime.now(timezone.utc)
 
     # Prepare statements
@@ -189,7 +179,7 @@ def run_once(session, own_ip: str) -> None:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(test_proxy, r.protocol, r.ip, r.port, own_ip): r
+            pool.submit(test_proxy, r.protocol, r.ip, r.port): r
             for r in fresh
         }
         for future in concurrent.futures.as_completed(futures):
@@ -235,7 +225,7 @@ def run_once(session, own_ip: str) -> None:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = {
-            pool.submit(test_proxy, r.protocol, r.ip, r.port, own_ip): r
+            pool.submit(test_proxy, r.protocol, r.ip, r.port): r
             for r in golden
         }
         for future in concurrent.futures.as_completed(futures):
@@ -263,13 +253,13 @@ def run_once(session, own_ip: str) -> None:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def main() -> None:
+    log.info("Known node IPs (proxy leak detection): %s", NODE_IPS)
     session = connect()
-    own_ip  = get_own_ip()
 
     while True:
         log.info("═══ Starting test cycle ═══")
         try:
-            run_once(session, own_ip)
+            run_once(session)
         except Exception as exc:
             log.error("Test cycle failed: %s", exc, exc_info=True)
         log.info("Sleeping %ds until next cycle.", TEST_INTERVAL)

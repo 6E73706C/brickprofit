@@ -290,6 +290,7 @@ services:
       - TEST_INTERVAL_SECONDS=1800
       - TEST_TIMEOUT_SECONDS=12
       - TEST_MAX_WORKERS=150
+      - NODE_IPS=${NODE0_HOST},${NODE1_HOST},${NODE2_HOST}
     networks:
       - backend_net
     deploy:

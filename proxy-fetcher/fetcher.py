@@ -17,6 +17,7 @@ Sources (raw GitHub content, updated frequently):
 
 import logging
 import os
+import random
 import re
 import time
 import uuid
@@ -141,9 +142,39 @@ def prepare_statements(session):
 
 
 # ── Fetch / parse ─────────────────────────────────────────────────────────────
-def fetch_proxies(url: str, protocol: str, source: str) -> list[tuple]:
+def pick_golden_proxy(session) -> dict | None:
+    """
+    Return a requests-compatible proxies dict using a random golden proxy,
+    or None if no golden proxies are available yet (first bootstrap cycle).
+    """
     try:
-        resp = requests.get(url, timeout=30)
+        rows = list(session.execute("SELECT protocol, ip, port FROM golden_proxies LIMIT 200"))
+        if not rows:
+            return None
+        row = random.choice(rows)
+        if row.protocol == "http":
+            proxy_url = f"http://{row.ip}:{row.port}"
+        elif row.protocol == "socks4":
+            proxy_url = f"socks4://{row.ip}:{row.port}"
+        elif row.protocol == "socks5":
+            proxy_url = f"socks5://{row.ip}:{row.port}"
+        else:
+            return None
+        return {"http": proxy_url, "https": proxy_url}
+    except Exception as exc:
+        log.warning("Could not read golden_proxies: %s", exc)
+        return None
+
+
+def fetch_proxies(url: str, protocol: str, source: str, session) -> list[tuple]:
+    proxies = pick_golden_proxy(session)
+    if proxies is None:
+        log.warning(
+            "No golden proxies available yet (bootstrap). "
+            "Fetching %s directly \u2014 this is only acceptable on first deployment.", url
+        )
+    try:
+        resp = requests.get(url, proxies=proxies, timeout=30)
         resp.raise_for_status()
     except Exception as exc:
         log.warning("Failed to fetch %s: %s", url, exc)
@@ -156,7 +187,7 @@ def fetch_proxies(url: str, protocol: str, source: str) -> list[tuple]:
         if m:
             ip, port = m.group(1), int(m.group(2))
             results.append((ip, port, protocol, source))
-    log.info("  %s / %-6s → %d proxies", source, protocol, len(results))
+    log.info("  %s / %-6s \u2192 %d proxies", source, protocol, len(results))
     return results
 
 
@@ -165,7 +196,7 @@ def run_once(session, upsert_stmt, insert_stmt):
     now = datetime.now(timezone.utc)
     total = 0
     for url, protocol, source in SOURCES:
-        for ip, port, proto, src in fetch_proxies(url, protocol, source):
+        for ip, port, proto, src in fetch_proxies(url, protocol, source, session):
             try:
                 # Try lightweight insert first (IF NOT EXISTS)
                 result = session.execute(insert_stmt, (
